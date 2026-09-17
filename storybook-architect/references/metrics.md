@@ -20,7 +20,7 @@ Coverage is the weakest of the four on its own — 100% coverage of stale storie
 There is no industry number to hit, and any skill that hands you one is inventing it. Set the target from your own baseline:
 
 - **First run = the baseline.** Commit it. `.storybook-audit.baseline.json` lives outside the report directory precisely because the report is wiped each run.
-- **Ratchet, don't leap.** Each of the four may go down or stay flat; none may go up. That is the entire policy, and it's enforceable on day one at any starting quality.
+- **Ratchet, don't leap — and mind the direction.** Two metrics are violation counts that must not rise (hardcoded hits, duplicate pairs). Two are percentages that must not fall (token adoption, story coverage). A single "nothing may increase" rule is wrong: it would forbid coverage improving. Only the violation-count metrics have a `--gate`.
 - **Re-baseline deliberately.** Raising a baseline is a commit someone reviews, with a reason in the message. Silent baseline drift is the failure mode to watch for — if baselines move every sprint, the gate is theatre.
 - Only after the ratchet holds for a quarter is it worth naming an absolute target (say, token adoption ≥90% in `components/`).
 
@@ -49,8 +49,9 @@ jobs:
       # no new raw values (prefer a lint rule where the stack supports one)
       - run: node scripts/audit.mjs --root src --gate hardcoded
 
-      # no newly stale stories
-      - run: node scripts/audit.mjs --root src --gate stale
+      # NOTE: no `--gate stale`. Staleness is mtime-based; a fresh clone or a
+      # repo-wide reformat manufactures it, and a behaviour-preserving refactor
+      # is not decay. Use it to prioritise review, never to fail a build.
 
       # stories as component tests, a11y errors included
       - run: npm run test-storybook
@@ -71,5 +72,8 @@ Say this out loud when reporting, so the numbers aren't over-trusted:
 
 - **Prop extraction is regex, not AST.** Duplicate detection is a strong hint, not proof. Confirm before merging two components.
 - **Import counting misses dynamic imports, barrel-file re-exports, and non-PascalCase components.**
-- **Staleness uses file mtime**, so a repo-wide reformat or a fresh clone resets it. Run it on a checkout with real history if the number looks impossible.
+- **Staleness uses file mtime**, which is checkout time on a fresh clone — not authoring history. It is a review-prioritisation hint, never a gate.
+- **"Duplicate pairs" counts pairs, not clusters.** Four similar components produce six pairs.
+- **Token adoption counts files without literal matches**, not styled declarations or semantic-token usage. A component importing a CSS file full of raw hex still scores as clean. Treat it as a discovery signal, not a compliance number.
+- **A null metric means unknown** (nothing measurable found, or a framework whose component exports this scanner cannot parse — Vue and Svelte SFCs among them). Never read it as 100%.
 - **Nothing here measures quality.** A well-covered, fully tokenized system can still be badly designed. These four numbers measure rot, not craft.

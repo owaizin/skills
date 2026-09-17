@@ -35,6 +35,8 @@ utimesSync(join(tmp, 'src/Button.stories.tsx'), old, old);
 
 const run = (script, extra = []) =>
   execFileSync('node', [join(here, script), '--root', join(tmp, 'src'), ...extra], { encoding: 'utf8' });
+// validate-status only exits non-zero under --gate now that it is a lint, not a verdict.
+const runGate = (script, extra = []) => run(script, ['--gate', ...extra]);
 
 const out = run('audit.mjs', ['--out', join(tmp, '.audit')]);
 const f = JSON.parse(readFileSync(join(tmp, '.audit/findings.json'), 'utf8'));
@@ -67,13 +69,35 @@ assert.ok(failed, 'gate exits non-zero when hardcoded values increase');
 assert.ok(run('validate-status.mjs').includes('ok'), 'valid status passes');
 w('src/Bad.stories.tsx', `const meta = { component: Bad, tags: ['autodocs', 'redy'] };`);
 let statusFailed = false;
-try { run('validate-status.mjs'); } catch (e) { statusFailed = true; assert.ok(String(e.stderr).includes("unknown tag 'redy'")); }
+try { runGate('validate-status.mjs'); } catch (e) { statusFailed = true; assert.ok(String(e.stderr).includes("unknown tag 'redy'")); }
 assert.ok(statusFailed, 'typo status fails CI');
 
 w('src/Bad.stories.tsx', `const meta = { component: Bad, tags: ['autodocs', 'deprecated'] };`);
 let depFailed = false;
-try { run('validate-status.mjs'); } catch (e) { depFailed = true; assert.ok(String(e.stderr).includes('replacement pointer')); }
+try { runGate('validate-status.mjs'); } catch (e) { depFailed = true; assert.ok(String(e.stderr).includes('replacement pointer')); }
 assert.ok(depFailed, 'deprecated without replacement fails CI');
+
+// P0 regression: the report dir is wiped each run, so it must never overlap the
+// scan root, and must never delete a directory this script did not create.
+let overlapRejected = false;
+try { run('audit.mjs', ['--out', join(tmp, 'src')]); } catch { overlapRejected = true; }
+assert.ok(overlapRejected, '--out inside --root is rejected');
+assert.ok(readFileSync(join(tmp, 'src/Card.tsx'), 'utf8').includes('CardProps'), 'source survives an overlapping --out');
+
+mkdirSync(join(tmp, 'notmine'), { recursive: true });
+writeFileSync(join(tmp, 'notmine/keep.txt'), 'keep');
+let foreignRejected = false;
+try { run('audit.mjs', ['--out', join(tmp, 'notmine')]); } catch { foreignRejected = true; }
+assert.ok(foreignRejected, 'refuses to wipe a directory it did not create');
+assert.equal(readFileSync(join(tmp, 'notmine/keep.txt'), 'utf8'), 'keep', 'foreign files survive');
+
+// Gates must fail closed on unknown input, never initialise a meaningless baseline.
+let badGate = false;
+try { run('audit.mjs', ['--out', join(tmp, '.g'), '--gate', 'hardcodded']); } catch { badGate = true; }
+assert.ok(badGate, 'unknown --gate name exits non-zero');
+let emptyScan = false;
+try { execFileSync('node', [join(here, 'audit.mjs'), '--root', join(tmp, 'nope'), '--out', join(tmp, '.h'), '--gate', 'hardcoded'], { encoding: 'utf8' }); } catch { emptyScan = true; }
+assert.ok(emptyScan, 'gating an empty/missing scan exits non-zero');
 
 rmSync(tmp, { recursive: true, force: true });
 console.log('all checks passed');

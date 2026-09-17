@@ -1,7 +1,17 @@
 #!/usr/bin/env node
-// CI gate: component status is an enum, not a vibe.
-// Fails on: unknown status tag, missing status on a contract story, a deprecated
-// component with no replacement pointer.
+// Status lint. NOT a CI gate yet — see LIMITATIONS.
+//
+// LIMITATIONS (do not wire this into CI until they are fixed):
+//   Storybook resolves tags per story across project -> meta -> story, where `!tag`
+//   REMOVES an inherited tag. This script flattens every tag array in the file and
+//   strips `!`, which is not the same operation. Known false positives:
+//     - meta ['ready'] + story ['!ready','experimental'] reports "3 status tags"
+//     - a workshop meta ['!autodocs','!manifest'] is treated as a contract
+//     - any custom project tag is rejected as an invalid status
+//   It also reads no previous version, so transition rules are NOT implemented,
+//   and the deprecation check is a prose regex that accepts "use caution".
+// Fixing this needs resolved per-story metadata (Storybook's index/manifest), not
+// a file-level regex.
 // Usage: node scripts/validate-status.mjs [--root src] [--require-status]
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, relative, extname } from 'node:path';
@@ -55,9 +65,10 @@ for (const file of walk(ROOT)) {
   }
 }
 
-console.log(JSON.stringify({ statusCounts: counts, errors: errors.length }, null, 2));
+console.log(JSON.stringify({ statusCounts: counts, findings: errors.length }, null, 2));
 if (errors.length) {
   console.error('\n' + errors.join('\n'));
-  process.exit(1);
+  console.error('\nThese are LINT FINDINGS, not verdicts: tag inheritance is not resolved (see header).');
+  if (args.includes('--gate')) process.exit(1);
 }
 console.log('status: ok');

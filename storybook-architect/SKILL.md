@@ -48,7 +48,7 @@ node scripts/audit.mjs --root src --out .storybook-audit
 It writes `findings.json` (machine-readable, four metrics + per-finding detail) and one MDX page per finding category under `.storybook-audit/`. It detects:
 
 1. **Hardcoded values** — raw hex, rgb/hsl literals, and px outside a tokens/theme file. Each hit is a token that doesn't exist yet.
-2. **Duplicate components** — clustered by normalized name and prop-shape overlap. Two `Button`-ish components sharing 80% of props is a finding, not a coincidence.
+2. **Duplicate components** — clustered by normalized name and prop-shape overlap. Two `Button`-ish components sharing 60% of props (the implemented threshold) is a finding, not a coincidence.
 3. **Story coverage** — component files with no story, and which are highest-traffic (import count) among them.
 4. **Stale stories** — story file older than the component it documents. This is decay, measured.
 5. **Naming drift** — the same concept under different names (`primary` / `brand` / `accent`). Report it; **never silently pick a winner** — that's a decision for the team, and picking one quietly is how a system loses consent.
@@ -85,7 +85,7 @@ End every audit with the metrics block from `findings.json`, not prose:
 |---|---|
 | Token adoption (styled values via tokens) | `x%` |
 | Story coverage (components with a story) | `x%` |
-| Duplicate clusters | `n` |
+| Duplicate pairs | `n` |
 | Stale stories | `n` |
 
 Commit `findings.json` to a known path so the next run can print the delta. **Without a baseline, "we stopped the decay" is unfalsifiable.** See `references/metrics.md` for targets and for wiring the gate.
@@ -166,7 +166,9 @@ The rules only count once they can fail a build.
 
 ### Status is an enum, not a vibe
 
-Status lives as a Storybook tag, validated in CI. `references/component-lifecycle.md` has the taxonomy and transition rules; `scripts/validate-status.mjs` is what makes them real — it fails on an unknown or missing status tag, on a `deprecated` component with no replacement pointer, and on an illegal transition.
+Status lives as a Storybook tag. `references/component-lifecycle.md` has the taxonomy and transition rules.
+
+`scripts/validate-status.mjs` **lints** those tags — it does not yet enforce them, and must not be wired into CI as written. Storybook resolves tags per story across project → meta → story with `!tag` removing an inherited tag; the script flattens a whole file instead, so it misreports the documented `['!ready','experimental']` override, treats a workshop meta as a contract, and rejects legitimate custom tags. Transition checking is unimplemented. Run it for signal; read the findings yourself. Enforcement needs resolved per-story metadata from Storybook's index, not a file-level regex.
 
 ```ts
 // .storybook/main.ts — status tags become sidebar filters
@@ -189,7 +191,7 @@ Now "what's deprecated and what replaces it" is a sidebar filter and a CI check,
 An audit finds rot; a gate prevents it. Wire these in CI (details and sample workflow in `references/metrics.md`):
 
 - **No new raw values.** `node scripts/audit.mjs --gate hardcoded` fails when hardcoded hex/px in component directories exceeds the committed baseline. Surveyed systems overwhelmingly enforce tokens by making the raw value *fail* — 15 token-enforcement techniques across 13 systems, "mostly by making the raw value fail rather than by asking the model not to write it" (https://state-of-ai-in-design-systems.netlify.app/questions/design-tokens.md). Prefer a real lint rule (`stylelint-declaration-strict-value`, an ESLint no-restricted-syntax rule, or a typed token vocabulary the compiler checks) over the script when the stack supports one.
-- **Status validity.** `node scripts/validate-status.mjs`.
+- **Status validity.** Not available yet — `validate-status.mjs` lints, but cannot resolve tag inheritance. Do not gate on it.
 - **Accessibility, scaled deliberately.** `@storybook/addon-a11y` with `parameters.a11y.test: 'error'` on contract stories; `'todo'` while a component is being brought up. `'off'` only with a written reason. Blanket `'error'` everywhere produces noise on token swatches and layout pages, the team disables it globally, and you end up with less a11y than a scoped rule would have given you.
 - **Tests, scoped to logic.** `@storybook/addon-vitest` turns stories into browser-run component tests. Play functions once a component has real logic — validation, toggles, multi-step state — not on presentational ones. Pass `storybookUrl` so CI failures link to the published Storybook.
 
