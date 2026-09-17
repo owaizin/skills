@@ -1,0 +1,7 @@
+interface:
+  display_name: "Storybook Architect"
+  short_description: "Make component docs useful to people and agents"
+  default_prompt: "Use $storybook-architect to review this project's Storybook and explain the three most useful improvements, using its existing tools."
+
+policy:
+  allow_implicit_invocation: true

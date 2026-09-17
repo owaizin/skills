@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Status lint. NOT a CI gate yet — see LIMITATIONS.
+// RETIRED from recommended workflows. Retained for compatibility and regression study.
+// Known false positives and false negatives make this unsuitable for project decisions.
 //
 // LIMITATIONS (do not wire this into CI until they are fixed):
 //   Storybook resolves tags per story across project -> meta -> story, where `!tag`
@@ -20,6 +21,8 @@ const args = process.argv.slice(2);
 const arg = (n, d) => { const i = args.indexOf(`--${n}`); return i === -1 ? d : args[i + 1]; };
 const ROOT = arg('root', 'src');
 const REQUIRE = args.includes('--require-status');
+
+console.error('RETIRED: this classifier has known false findings. Do not use it for project decisions or CI; use a checker over Storybook\'s resolved story index.');
 
 const STATUS = new Set(['wip', 'experimental', 'ready', 'deprecated']);
 // Tags that are Storybook's or this skill's, not a status. Anything else unknown is a typo.

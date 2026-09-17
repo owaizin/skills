@@ -11,7 +11,7 @@ Survey figures come from *State of AI in Design Systems* (Kaelig Deloumeau-Prige
 - **Token adherence is enforced, not requested: 15 token-enforcement techniques across 13 systems**, working "mostly by making the raw value fail rather than by asking the model not to write it" — typed token vocabularies, lint rules rejecting literal colors, token lookup exposed as a tool.
   https://state-of-ai-in-design-systems.netlify.app/questions/design-tokens.md
 
-This is the single most transferable finding in the study, and it applies to human contributors as much as to models. It is why this skill ships scripts.
+This supports investing in reliable checks for explicit obligations. It does not validate this skill's experimental scanner or justify converting uncertain signals into gates.
 
 ## Atlassian Design System — https://atlassian.design (verified 2026-09-17)
 
@@ -25,11 +25,11 @@ This is the single most transferable finding in the study, and it applies to hum
 
 ## GitHub Primer — https://primer.style (verified 2026-09-17)
 
-- **Storybook itself as the queryable source.** `packages/react/.storybook` serves an MCP endpoint at `/mcp` (list-all-documentation, get-documentation, get-storybook-story-instructions, preview-stories), registered in a committed `.vscode/mcp.json` — and the repo's Copilot instructions *forbid answering about components from model memory until that server has been queried*. This is the pattern this skill's Phase 3 is built on.
+- **Storybook itself as the queryable source.** `packages/react/.storybook` serves an MCP endpoint at `/mcp` (list-all-documentation, get-documentation, get-storybook-story-instructions, preview-stories), registered in a committed `.vscode/mcp.json` — and the repo's Copilot instructions *forbid answering about components from model memory until that server has been queried*. This informs the agent-readable documentation workflow.
   https://github.com/primer/react/tree/main/packages/react/.storybook
 - **Component review as a machine-readable rubric.** `.github/instructions/component-review.instructions.md` gives each rule a stable ID, a Check, a Prefer, and an **Authority** field pointing at the ADR it derives from. Reviews become checkable and arguable against a written decision instead of taste.
   https://github.com/primer/react/blob/main/.github/instructions/component-review.instructions.md
-- **A self-check tool in the loop.** `@primer/brand-mcp` ships `primer_brand_review`, which scans generated JSX/CSS for unknown components, invalid props and hardcoded values. The equivalent here is `audit.mjs --gate`.
+- **A self-check tool in the loop.** `@primer/brand-mcp` ships `primer_brand_review`, which scans generated JSX/CSS for unknown components, invalid props and hardcoded values. A lexical count ceiling is not an equivalent: checks need to understand the project's actual API and token policy.
 - **Primer publishes no `llms.txt`** (`primer.style/llms.txt` 404s) — it bet entirely on MCP. Useful correction to the common claim that every elite system ships llms.txt: the study found 15 of 21 do. Don't cite it as universal.
 - **Token repo uses a mandatory command chain.** `primer/primitives/AGENTS.md` specifies a required post-change build/test chain and marks generated files "do not edit."
   https://github.com/primer/primitives/blob/main/AGENTS.md

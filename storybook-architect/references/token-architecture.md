@@ -2,15 +2,15 @@
 
 ## Rule zero: conform before you propose
 
-If the project already has a working token convention, adopt it. A Tailwind project's `text-md` is correct *in that project*. Replacing a functioning local grammar with a famous external one costs every consumer a migration and buys nothing. Propose a grammar only where none exists, or where the audit shows the existing one has already fractured (see naming drift in `findings.json`).
+If the project already has a working token convention, adopt it. A Tailwind project's `text-md` is correct *in that project*. Propose changes where consumer evidence shows the existing vocabulary cannot express a needed role or theme. A scanner finding different words is only a candidate: `primary`, `brand`, and `accent` can describe different axes without conflicting.
 
-## Layers — three by default
+## Layers — choose by purpose
 
 1. **Primitive** (Core/Global/Base) — raw values, no meaning. `blue-500: #3B82F6`, `space-4: 16px`
-2. **Semantic** — purpose, references a Primitive. This is what components consume. `color.background.brand.bold → {blue-500}`
+2. **Semantic** — purpose, references a Primitive. Use where a role needs to vary across themes or modes. `color.background.brand.bold → {blue-500}`
 3. **Component** — scoped to one component, references Semantic. **Add only when a real override exists.** `button.primary.background`
 
-**The one hard rule:** a component never references a Primitive directly. `color: blue-500` in a component is an audit finding, not a style choice — it means the semantic layer is missing or was skipped.
+**Define the rule per category.** Color roles usually need semantic aliases so themes can change their values. Direct spacing, radius, or duration scales can be appropriate; Atlassian documents direct `token('space.200')` consumption. Require an alias where its meaning or theme behavior earns it, not for every primitive reference. Check the project's convention before classifying a use as a defect.
 
 ### Why component tokens are opt-in, not a default layer
 
@@ -37,7 +37,7 @@ Same source as above. What makes it work is not the segment count — it's that 
 
 ## Migration order (retrofitting)
 
-1. **Colour first**, then spacing. Highest blast radius and, for colour, the clearest theming justification. The scanner ranks files by literal-match count; treat that ranking as a worklist of candidates, each of which still needs a decision: existing token, new token, implementation constant, or documented exception.
+1. **Prioritize by consumer impact.** Color roles often have the clearest theming need. A maintained project check can find candidates; literal-match count alone cannot rank the value of fixing them. Decide whether each is an existing token, new reusable role, implementation constant, or documented exception.
 2. **Typography next**, once spacing/color conventions have survived contact with real PRs.
 3. **Component tokens last**, and only per the rule above.
 
@@ -52,7 +52,7 @@ In order of preference:
 
 1. **Types** — a union of token names, so a raw hex is a compile error.
 2. **Lint** — `stylelint-declaration-strict-value` for CSS, or an ESLint `no-restricted-syntax` rule for style objects.
-3. **The audit gate** — `node scripts/audit.mjs --gate hardcoded` when neither fits the stack. Weakest of the three; it catches regressions instead of preventing them.
+3. **Manual review with candidates** where reliable checks are unavailable. The optional source scanner can help find them; its count ceiling does not enforce token policy or identify new violations. See [its limits](metrics.md). Do not add it alongside an existing maintained audit by default.
 
 ## Output formats — ask, don't assume
 

@@ -1,8 +1,8 @@
 # Component Lifecycle & Maintenance Decisions
 
-The judgment calls that normally live in one senior dev's head. Every rule here has a mechanism — a tag, a filter, or a CI check. A rule with no mechanism is a rule that will be ignored by the third new hire.
+Make consumer expectations and ownership visible. Keep existing project conventions when they work; the statuses below are an example vocabulary, not a required migration. A documented decision can be useful without becoming a CI rule.
 
-## Status is a tag, validated in CI
+## Status records a support decision
 
 Storybook tags are "any static (i.e. not created dynamically) string", settable at project, component or story level, and custom tags become sidebar filters. That is the whole mechanism — no addon needed.
 
@@ -18,12 +18,11 @@ export const NewVariant: Story = { tags: ['!ready', 'experimental'] };
 ```
 
 ```ts
-// .storybook/main.ts — everything but `ready` is hidden until asked for
+// .storybook/main.ts — optional defaults if consumers want these hidden
 tags: {
   deprecated:   { defaultFilterSelection: 'exclude' },
   experimental: { defaultFilterSelection: 'exclude' },
   wip:          { defaultFilterSelection: 'exclude' },
-  audit:        { defaultFilterSelection: 'exclude' },
 },
 ```
 
@@ -31,32 +30,30 @@ Source: https://storybook.js.org/docs/writing-stories/tags and https://storybook
 
 | Status | Meaning |
 |---|---|
-| `wip` | Being built. Not for any use. |
+| `wip` | Being built. No supported consumer contract yet. |
 | `experimental` | Usable, API still moving. Expect breakage. |
 | `ready` | Stable API. Safe to build on. |
-| `deprecated` | Do not use in new work. Must name its replacement. |
+| `deprecated` | Avoid in new work. Provide migration or retirement guidance. |
 
-`node scripts/validate-status.mjs` **lints** these tags. **Do not wire it into CI.** It flattens every tag array in a file rather than resolving Storybook's per-story inheritance (project → meta → story, `!tag` removing an inherited tag), so it misreports the `['!ready','experimental']` override shown above, treats a workshop meta as a contract, and rejects legitimate custom tags. Its deprecation check is a prose regex that accepts "use caution". Read its findings; do not treat them as verdicts. Enforcement needs resolved per-story metadata from Storybook's index.
+`scripts/validate-status.mjs` is **retired from recommended use**, including manual reviews. It flattens tag arrays instead of resolving project → component → story inheritance and `!tag` removal. It misreports legitimate overrides and custom tags, and its deprecation check accepts unrelated prose. Use the project's maintained checker over Storybook's resolved index and explicit migration metadata. No replacement classifier is supplied here.
 
 **Transitions**
 - `experimental → ready` only once the API has stopped changing **and** it's used in a real production surface, not just in Storybook.
 - `ready → deprecated` ships with migration guidance in the same commit. Usually that is "use X instead". Sometimes there is legitimately no successor — a capability being retired — and then the guidance is the retirement rationale and what consumers should do instead. Do not force a fictional replacement to satisfy a checker.
 - A lifecycle needs an end: track retirement and consumer-upgrade completion, not an eternally `deprecated` entry.
-- No jumping straight to `deprecated` without a `ready` period, unless the component was broken or unsafe from the start.
+- Experimental components can also be retired. Record who depends on them and how those consumers will be supported.
 - Deprecated components also get `!manifest`, so agents stop suggesting them: Storybook's own guidance is to remove the `manifest` tag from stories demonstrating anti-patterns or deprecated components.
 
-## Two kinds of story
+## Separate the decisions
 
-Collapsing these is the most common source of story rot — teams end up maintaining throwaway harnesses as if they were contracts, then stop trusting the whole tool.
-
-Rather than two buckets, decide each axis explicitly:
+Decide each axis explicitly:
 
 | Axis | Options | Notes |
 |---|---|---|
 | Maturity | `wip` / `experimental` / `ready` / `deprecated` | one per story, after inheritance |
-| Docs | `autodocs` or not | generated docs cost nothing to keep current |
+| Docs | `autodocs` or not | generates API reference; usage guidance still needs review |
 | Agent retrieval | `manifest` or `!manifest` | exclude anti-patterns; deprecated APIs may still need to be findable by migration agents |
-| Tests | Storybook's `test` tag is implicit | `!autodocs`/`!manifest` do **not** remove it — a harness story still runs in CI unless you say otherwise |
+| Tests | `test` is implicit; `!test` opts out for tag-aware runners | `!autodocs`/`!manifest` do not remove it. Actual execution depends on entry type and the configured runner; a docs entry is not a test merely because it has this tag. |
 
 A harness story often becomes a valuable regression fixture; don't delete it merely because it started as scaffolding. An experimental component can carry a well-documented contract with limited support. Define promotion and retirement criteria rather than inferring them from tags.
 
@@ -74,13 +71,13 @@ When genuinely unsure whether something is ready to be documented as a contract,
 
 ## Docs level
 
-- `tags: ['autodocs']` is the default for contract stories — it generates from the story plus prop types, so it costs nothing to keep current.
+- Use `tags: ['autodocs']` when generated API reference helps consumers. Verify extraction and examples after API changes; generation does not maintain the usage advice for you.
 - Hand-written MDX only when the component needs prose stories can't express: design rationale, do/don't, when to use this versus a neighbor. If the MDX would restate autodocs, skip it.
 - Write JSDoc on the component and on each prop. It lands in the agent-facing manifest, and undocumented props are exactly what agents hallucinate around.
 
 ## Addon thresholds
 
-- **`@storybook/addon-a11y`** — `parameters.a11y.test: 'error'` on contract stories (violations fail in CLI/CI), `'todo'` while bringing a component up (warns, doesn't fail), `'off'` only with a written reason. `globals.a11y.manual: true` disables automated checks on a specific story. Do not set `'error'` globally and unconditionally: token swatches and layout pages generate noise, the team disables the addon wholesale, and the net result is less accessibility than a scoped rule would have delivered.
+- **`@storybook/addon-a11y`** — inspect the runner first. With the supported integration, `parameters.a11y.test: 'error'` makes violations fail, `'todo'` records pending work, and `'off'` disables that check. Verify an intentional failure through the actual CI command before claiming enforcement. Manual addon mode can coexist with separate Playwright axe checks; Brilliance uses that arrangement. Do not infer missing coverage from `manual: true` alone. Automated checks still need focused keyboard and focus verification.
   Source: https://storybook.js.org/docs/writing-tests/accessibility-testing
 - **`@storybook/addon-vitest`** — turns stories into real-browser component tests (smoke render + any play function) via portable stories. Requires Vite; `@storybook/test-runner` remains supported and works with any framework. Pass `storybookUrl` so CI failures link to the published Storybook.
   Source: https://storybook.js.org/docs/writing-tests/integrations/vitest-addon

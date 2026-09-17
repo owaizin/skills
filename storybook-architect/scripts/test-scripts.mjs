@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // One runnable check for audit.mjs + validate-status.mjs. Run: node scripts/test-scripts.mjs
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, utimesSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, utimesSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -38,7 +38,7 @@ utimesSync(join(tmp, 'src/Button.stories.tsx'), old, old);
 const run = (script, extra = []) =>
   execFileSync('node', [join(here, script), '--root', join(tmp, 'src'),
     ...(script === 'audit.mjs' ? ['--baseline', join(tmp, 'baseline.json')] : []), ...extra], { encoding: 'utf8' });
-// validate-status only exits non-zero under --gate now that it is a lint, not a verdict.
+// Exercise the retained classifier's legacy behavior without recommending it.
 const runGate = (script, extra = []) => run(script, ['--gate', ...extra]);
 
 const out = run('audit.mjs', ['--out', join(tmp, '.audit')]);
@@ -56,40 +56,44 @@ assert.ok(f.uncovered.find((u) => u.component === 'DatePicker').usedIn >= 1, 'ke
 assert.ok(f.metrics.storiedComponentRatio < 100, 'ratio reflects missing stories');
 assert.ok(f.metrics.literalValueMatches > 0 && f.metrics.filesWithLiteralValues > 0, 'literal counts are raw counts, not a percentage');
 assert.ok(!('tokenAdoption' in f.metrics), 'no metric claims to measure token adoption');
-assert.ok(readFileSync(join(tmp, '.audit/Overview.mdx'), 'utf8').includes("tags={['audit', '!manifest', '!autodocs']}"), 'audit pages are quarantined');
+for (const name of ['Overview', 'HardcodedValues', 'Duplicates', 'Coverage', 'Stale', 'NamingDrift']) {
+  const page = readFileSync(join(tmp, `.audit/${name}.mdx`), 'utf8');
+  assert.ok(page.includes("tags={['sb-architect-audit', '!manifest', '!autodocs', '!test']}"), `${name}: report metadata uses its own tag and excludes manifests and tests`);
+}
 
-// gate: first run writes a baseline outside the wiped report dir, second run passes
+// Baseline initialization is separate from the gate.
 // A gate with no baseline must FAIL, never mint one from the change under test.
 let noBaseline = false;
-try { run('audit.mjs', ['--out', join(tmp, '.audit'), '--gate', 'hardcoded']); } catch { noBaseline = true; }
-assert.ok(noBaseline, 'gate without a baseline exits non-zero');
+try { run('audit.mjs', ['--out', join(tmp, '.audit'), '--gate', 'hardcoded']); } catch (e) { noBaseline = true; assert.equal(e.status, 2); }
+assert.ok(noBaseline, 'gate without a baseline exits 2');
+assert.ok(!existsSync(join(tmp, 'baseline.json')), 'missing-baseline gate does not create a baseline');
 run('audit.mjs', ['--out', join(tmp, '.audit'), '--init-baseline']);
 run('audit.mjs', ['--out', join(tmp, '.audit')]); // full run wipes the report dir
 const pass = run('audit.mjs', ['--out', join(tmp, '.audit'), '--gate', 'hardcoded']);
 assert.ok(pass.includes('baseline'), 'baseline survives a full audit run');
 // Ratios must be refused as gates: gating one inverts the policy when it improves.
 let ratioRefused = false;
-try { run('audit.mjs', ['--out', join(tmp, '.audit'), '--gate', 'storiedComponentRatio']); } catch { ratioRefused = true; }
+try { run('audit.mjs', ['--out', join(tmp, '.audit'), '--gate', 'storiedComponentRatio']); } catch (e) { ratioRefused = true; assert.equal(e.status, 2); }
 assert.ok(ratioRefused, 'ratio metrics are not gateable');
 
 // gate fails when the number rises
 w('src/Worse.tsx', `const s = { color: '#abcdef', color2: '#123456', pad: '32px' };`);
 let failed = false;
-try { run('audit.mjs', ['--out', join(tmp, '.audit'), '--gate', 'hardcoded']); } catch { failed = true; }
+try { run('audit.mjs', ['--out', join(tmp, '.audit'), '--gate', 'hardcoded']); } catch (e) { failed = true; assert.equal(e.status, 1); }
 assert.ok(failed, 'gate exits non-zero when hardcoded values increase');
 
-// status validator
+// Historical regression coverage for the retired status classifier, not a supported workflow.
 assert.ok(run('validate-status.mjs').includes('not a statement that statuses are correct'),
   'a clean lint run does not claim statuses are correct');
 w('src/Bad.stories.tsx', `const meta = { component: Bad, tags: ['autodocs', 'redy'] };`);
 let statusFailed = false;
 try { runGate('validate-status.mjs'); } catch (e) { statusFailed = true; assert.ok(String(e.stderr).includes("unknown tag 'redy'")); }
-assert.ok(statusFailed, 'typo status fails CI');
+assert.ok(statusFailed, 'historical classifier rejects an unknown tag under its legacy gate');
 
 w('src/Bad.stories.tsx', `const meta = { component: Bad, tags: ['autodocs', 'deprecated'] };`);
 let depFailed = false;
 try { runGate('validate-status.mjs'); } catch (e) { depFailed = true; assert.ok(String(e.stderr).includes('replacement pointer')); }
-assert.ok(depFailed, 'deprecated without replacement fails CI');
+assert.ok(depFailed, 'historical classifier rejects a missing replacement under its legacy gate');
 
 // P0 regression: the report dir is wiped each run, so it must never overlap the
 // scan root, and must never delete a directory this script did not create.
@@ -107,11 +111,22 @@ assert.equal(readFileSync(join(tmp, 'notmine/keep.txt'), 'utf8'), 'keep', 'forei
 
 // Gates must fail closed on unknown input, never initialise a meaningless baseline.
 let badGate = false;
-try { run('audit.mjs', ['--out', join(tmp, '.g'), '--gate', 'hardcodded']); } catch { badGate = true; }
+try { run('audit.mjs', ['--out', join(tmp, '.g'), '--gate', 'hardcodded']); } catch (e) { badGate = true; assert.equal(e.status, 2); }
 assert.ok(badGate, 'unknown --gate name exits non-zero');
 let emptyScan = false;
-try { execFileSync('node', [join(here, 'audit.mjs'), '--root', join(tmp, 'nope'), '--out', join(tmp, '.h'), '--gate', 'hardcoded'], { encoding: 'utf8' }); } catch { emptyScan = true; }
+try { execFileSync('node', [join(here, 'audit.mjs'), '--root', join(tmp, 'nope'), '--out', join(tmp, '.h'), '--gate', 'hardcoded'], { encoding: 'utf8' }); } catch (e) { emptyScan = true; assert.equal(e.status, 2); }
 assert.ok(emptyScan, 'gating an empty/missing scan exits non-zero');
+
+// Real-repository regressions: a filename containing 'palette' must not be exempt,
+// and small pixel values must not disappear below a two-digit matching floor.
+w('src/cmdk/command-palette.tsx', `export const CommandPalette = () => <div className="p-[2px] gap-[3px]" />;`);
+w('src/tokens.css', ':root { --brand: #123456; }');
+w('src/example.css', '.example { color: #abcdef; padding: 24px; }');
+run('audit.mjs', ['--out', join(tmp, '.audit')]);
+const regression = JSON.parse(readFileSync(join(tmp, '.audit/findings.json'), 'utf8'));
+assert.equal(regression.hardcoded.find(h => h.file === 'cmdk/command-palette.tsx')?.count, 2);
+assert.equal(regression.hardcoded.find(h => h.file === 'example.css')?.count, 2);
+assert.ok(!regression.hardcoded.some(h => h.file === 'tokens.css'));
 
 rmSync(tmp, { recursive: true, force: true });
 console.log('all checks passed');

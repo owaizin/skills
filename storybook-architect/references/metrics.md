@@ -1,85 +1,64 @@
-# Signals, Baselines & Gates
+# Optional source survey
 
-These are **discovery signals**, not quality measures. Each is a proxy scanned from source text; none establishes that a component meets its consumer contract. Report them with their method attached, and never as a grade.
+Use this experimental fallback only when a bounded source survey helps answer the request and the project lacks a maintained check for it. Do not run it merely because the skill was invoked. In Brilliance, use the Product System tooling instead; this scanner adds no demonstrated scanning value there.
 
-## The signals
+Explain the purpose in ordinary language: “I'll look for a few possible documentation gaps and repeated implementations, then check the candidates against the source.” Run the commands yourself when you have access. The user should not have to interpret `findings.json`.
 
-`scripts/audit.mjs` emits all of them into `findings.json` on every run.
+## Run and interpret
 
-| Signal | What it literally counts | What it does NOT establish |
-|---|---|---|
-| `literalValueMatches` / `filesWithLiteralValues` | regex hits for hex/rgb/hsl/px in scanned source | token compliance — a component importing a stylesheet of raw values counts clean |
-| `storiedComponentRatio` (+ `componentsScanned`) | parsed component exports that have a matching story | documentation quality; the denominator excludes anything the regex cannot parse (Vue/Svelte SFCs → `null`) |
-| `candidateDuplicatePairs` | pairs sharing a name or ≥60% prop *names* | duplication — it compares neither types nor behaviour, and N similar components produce N(N−1)/2 pairs |
-| `storiesOlderThanComponent` | file mtime comparison | decay — mtime is checkout time on a fresh clone, and a behaviour-preserving refactor lands here |
+From the target project, with the skill's actual location substituted:
 
-Coverage is the weakest of the four on its own — 100% coverage of stale stories is worse than 60% of fresh ones. Read coverage and staleness together, always.
-
-## Targets — direction, not absolutes
-
-There is no industry number to hit, and any skill that hands you one is inventing it. Set the target from your own baseline:
-
-- **Initialise the baseline explicitly**, review the numbers, and commit it:
-  `node <skill>/scripts/audit.mjs --root src --out .storybook-audit --baseline .storybook-audit-baseline.json --init-baseline`
-  The baseline defaults to `.storybook-audit-baseline.json` in the working directory — repo-local, so it can be committed. Keep the report directory (`--out`) inside the repo but outside `--root`; it is wiped on every run, so the baseline must not live in it.
-- **Only violation counts are gateable**, and only upward: `literalValueMatches`, `candidateDuplicatePairs`. Ratios are rejected by the script — gating one inverts the policy the moment it improves.
-- **Baselines are explicit.** `--init-baseline` is a separate, reviewable command. `--gate` with no baseline fails; a gate must never mint its own baseline from the change it is checking.
-- **A count ceiling is not "no new violations."** Removing one and adding another elsewhere passes. For that guarantee, compare stable violation identities, or use a real lint rule instead.
-- **Re-baseline deliberately.** Raising a baseline is a commit someone reviews, with a reason in the message. Silent baseline drift is the failure mode to watch for — if baselines move every sprint, the gate is theatre.
-- Absolute targets need a metric that measures the thing being targeted. None of the signals here qualify: a literal-match count is not a token-compliance rate. If you want a compliance target, get it from a lint rule or a typed token vocabulary that can actually observe styled declarations.
-
-## Trend, not snapshot
-
-Commit `findings.json` per run, or append the metrics block to a CSV. Two runs make a delta; a delta is the only thing that answers "is this getting better?" — which is the question the audit exists to answer.
-
-## CI wiring
-
-```yaml
-# .github/workflows/design-system.yml
-name: design system
-on: [pull_request]
-jobs:
-  guard:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - run: npm ci
-
-      # NOTE: validate-status.mjs is NOT in this workflow. It does not resolve
-      # Storybook's tag inheritance and reports false findings. Run it by hand.
-
-      # count ceiling on literal values. Prefer a real lint rule where the stack
-      # supports one: stylelint-declaration-strict-value, an ESLint rule, or a typed
-      # token vocabulary the compiler checks. All three beat this scanner.
-      - run: node scripts/audit.mjs --root src --out ../audit-report --gate literalValueMatches
-
-      # NOTE: no `--gate stale`. Staleness is mtime-based; a fresh clone or a
-      # repo-wide reformat manufactures it, and a behaviour-preserving refactor
-      # is not decay. Use it to prioritise review, never to fail a build.
-
-      # stories as component tests, a11y errors included
-      - run: npm run test-storybook
+```bash
+node <skill-directory>/scripts/audit.mjs --root src --out .storybook-audit
 ```
 
-Add gates one at a time. Three gates introduced in one PR get disabled in one PR.
+Keep `--out` inside the repository but outside the scan root. It is regenerated each run; the script refuses overlapping roots and existing directories without its generated marker. Do not put hand-written work there. A normal run does not change the baseline.
 
-## Why gates and not guidance
+| Field | What it measures | Important limit |
+|---|---|---|
+| `literalValueMatches` / `filesWithLiteralValues` | Regex matches for selected color and pixel syntax in scanned source files | Candidates, not missing tokens; constants, geometry, and intentional exceptions also match. Imported styles count in their own scanned files, not against the component using them. |
+| `storiedComponentRatio` / `componentsScanned` | Files with a recognized component export and a matching story name | One component record per file, not one per exported component. Basename matching can confuse different components; unsupported or unparsed files are excluded. |
+| `candidateDuplicatePairs` | Name similarity and overlap in prop names | Does not compare prop types, semantics, behavior, or wrapping. Counts pairs, not groups. |
+| `storiesOlderThanComponent` | File modification times | Checkout and formatting change these. Does not measure correctness or decay. |
 
-Across 21 surveyed design systems, validation loops are the most common technique — 31 of 165, present in every system studied — because a loop "turns a guideline into a failure the model has to fix, which is the only category here that keeps working after the model stops reading the instructions."
-Source: https://state-of-ai-in-design-systems.netlify.app/questions/validation-loops.md (July 2026 snapshot)
+`usedIn` only sees selected imports under the scanned root. It misses external consumers and some import forms, includes test/story imports, and can conflate equal names. Do not use it to decide shared-library promotion. A null metric is unknown, not a perfect score.
 
-That is an argument for automating the invariants that can be checked reliably. It is not an argument for converting every guideline into an exit code: a gate built on an invalid proxy fails the right changes for the wrong reasons, and contributors learn to route around it.
+Inspect candidates before recommending changes. Report the affected consumer task and source evidence; keep raw counts secondary. There is no curated multi-repository false-positive or false-negative rate for this scanner. The [bounded evaluation](evaluation-2026-09-18.md) is not a general accuracy claim.
 
-## What the audit does not measure
+## Optional Storybook report pages
 
-Say this out loud when reporting, so the numbers aren't over-trusted:
+The six generated MDX pages use:
 
-- **Prop extraction is regex, not AST.** Duplicate detection is a strong hint, not proof. Confirm before merging two components.
-- **Import counting misses dynamic imports, barrel-file re-exports, and non-PascalCase components.**
-- **Staleness uses file mtime**, which is checkout time on a fresh clone — not authoring history. It is a review-prioritisation hint, never a gate.
-- **"Duplicate pairs" counts pairs, not clusters.** Four similar components produce six pairs.
-- **Literal matching scans source text**, not styled declarations or computed styles. A component importing a stylesheet full of raw hex is not itself counted. The counts are review candidates, never a compliance number.
-- **A null metric means unknown** (nothing measurable found, or a framework whose component exports this scanner cannot parse — Vue and Svelte SFCs among them). Never read it as 100%.
-- **Nothing here measures quality.** A well-covered, fully tokenized system can still be badly designed. These four numbers measure rot, not craft.
+```mdx
+<Meta title="Audit/Overview" tags={['sb-architect-audit', '!manifest', '!autodocs', '!test']} />
+```
+
+The namespaced tag avoids claiming a project's generic `audit` tag. Inspect existing use even of this namespace before integrating. The docs-block import targets Storybook 10.6; generation does not dynamically adapt to the detector. Verify compatibility before adding a report to another version.
+
+If Storybook pages are useful, merge the report glob and this filter into the existing `main.ts` configuration, preserving other entries:
+
+```ts
+// Paths are relative to .storybook/main.ts; adapt to the actual configuration.
+stories: [/* existing globs */, '../.storybook-audit/**/*.mdx'],
+tags: {
+  // existing tag settings
+  'sb-architect-audit': { defaultFilterSelection: 'exclude' },
+},
+```
+
+Reports are hidden by default. To read them, open Storybook's tag filters and clear the exclusion for `sb-architect-audit`. Do not exclude generic `audit`: it may already label the project's own health stories.
+
+Build and check all six entries in `index.json`, preserve existing tagged entries, and confirm report exclusion from **both** `/manifests/components.json` and `/manifests/docs.json`. Include a known consumer MDX page as a positive control for the docs manifest. `!manifest` and `!autodocs` do not remove the implicit `test` tag; the generated pages explicitly use `!test` to express intent. Test execution still depends on entry type and the actual runner: an MDX `type: 'docs'` entry carrying `test` alone does not prove it will run.
+
+## Count ceilings: explicit opt-in only
+
+Do not add the scanner to CI by default. Prefer a maintained parser, typed token vocabulary, or lint rule tied to an actual policy. A user who deliberately wants a coarse ceiling can initialize a reviewed baseline separately:
+
+```bash
+node <skill-directory>/scripts/audit.mjs --root src --out .storybook-audit --baseline .storybook-audit-baseline.json --init-baseline
+node <skill-directory>/scripts/audit.mjs --root src --out .storybook-audit --baseline .storybook-audit-baseline.json --gate literalValueMatches
+```
+
+Only `literalValueMatches` and `candidateDuplicatePairs` are supported ceilings. They count uncertain candidates, not established violations. Removing one match while adding another passes. They cannot enforce “no new violations.” Ratio and timestamp gates are refused. Missing baselines, missing scan roots, and unsupported gate names exit 2; an increased count exits 1. Keep the baseline outside the regenerated report directory and review deliberate baseline changes.
+
+`validate-status.mjs` is retired from recommended workflows, including manual review. Its flattened tag regex has known false positives and false negatives. Use a project checker that understands Storybook's effective per-story tags instead.
