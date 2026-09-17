@@ -2,7 +2,14 @@
 // Re-runnable Storybook decay audit. Same input -> same output, so the delta is the signal.
 // Usage:
 //   node scripts/audit.mjs --root src --out .storybook-audit
-//   node scripts/audit.mjs --root src --gate hardcoded   (exit 1 if above committed baseline)
+//   node scripts/audit.mjs --root src --init-baseline    (explicit, reviewable)
+//   node scripts/audit.mjs --root src --gate literalValueMatches  (read-only check)
+//
+// WHAT THIS MEASURES: literal values in source text, component files without a
+// story, name/prop-shape similarity, and file mtimes. These are DISCOVERY SIGNALS
+// for review. They are not evidence that a component meets its consumer contract:
+// nothing here checks focus behaviour, keyboard operation, translated content, or
+// whether a published example matches the installed package.
 import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, basename, extname, resolve, sep } from 'node:path';
 
@@ -11,6 +18,7 @@ const arg = (n, d) => { const i = args.indexOf(`--${n}`); return i === -1 ? d : 
 const ROOT = arg('root', 'src');
 const OUT = arg('out', '.storybook-audit');
 const GATE = arg('gate', null);
+const INIT = args.includes('--init-baseline');
 
 const COMPONENT_EXT = new Set(['.tsx', '.jsx', '.vue', '.svelte']);
 const SKIP_DIR = /(^|\/)(node_modules|dist|build|coverage|\.git|storybook-static)(\/|$)/;
@@ -187,38 +195,59 @@ const drift = SYNONYMS.map((group) => {
 // inventory must not read as 100%.
 const pct = (n, d) => (d === 0 ? null : Math.round((n / d) * 100));
 const metrics = {
-  tokenAdoption: pct(componentFiles.length - hardcoded.filter((h) => COMPONENT_EXT.has(extname(h.file))).length, componentFiles.length),
-  // Denominator is component files that actually export a component, not every .tsx.
-  storyCoverage: pct(componentOf.size - uncovered.length, componentOf.size),
-  duplicatePairs: duplicates.length,  // pairs, not clusters: 4 similar components produce 6 pairs
-  staleStories: stale.length,
-  hardcodedHits: hardcoded.reduce((s, h) => s + h.count, 0),
+  // Counts of literal matches in scanned text. NOT "token adoption": this measures
+  // neither styled declarations nor semantic-token usage, and a component importing
+  // a CSS file full of raw hex scores clean here.
+  literalValueMatches: hardcoded.reduce((s, h) => s + h.count, 0),
+  filesWithLiteralValues: hardcoded.length,
+  // Denominator: files this scanner could parse a component export from. Frameworks
+  // it cannot parse (Vue/Svelte SFCs) yield null, never a perfect score.
+  componentsScanned: componentOf.size,
+  componentsWithoutStories: uncovered.length,
+  storiedComponentRatio: pct(componentOf.size - uncovered.length, componentOf.size),
+  candidateDuplicatePairs: duplicates.length,  // pairs needing review, not confirmed duplicates
+  storiesOlderThanComponent: stale.length,  // mtime only: checkout time on a fresh clone, not decay
 };
 
 const findings = { generatedAt: new Date().toISOString(), root: ROOT, counts: { components: componentFiles.length, stories: storyFiles.length }, metrics, hardcoded, uncovered, duplicates, stale, drift };
 
 // --- gate mode ---------------------------------------------------------------
+// Only violation COUNTS can be gated, and only in one direction: they must not rise.
+// Ratios are excluded deliberately - gating a ratio inverts the policy the moment
+// coverage improves.
+const GATEABLE = {
+  literalValueMatches: 'literal colour/size values in scanned source',
+  candidateDuplicatePairs: 'component pairs flagged for duplicate review',
+};
+const GATE_ALIAS = { hardcoded: 'literalValueMatches', duplicates: 'candidateDuplicatePairs' };
+const baselinePath = `${OUT}.baseline.json`;
+
+if (INIT) {
+  if (!existsSync(ROOT)) { console.error(`FAIL: --root ${resolve(ROOT)} does not exist.`); process.exit(2); }
+  if (componentFiles.length === 0) { console.error(`FAIL: no component files under ${resolve(ROOT)}.`); process.exit(2); }
+  writeFileSync(baselinePath, JSON.stringify({ createdAt: new Date().toISOString(), root: ROOT, metrics }, null, 2));
+  console.log(`Baseline written to ${baselinePath}. Commit it: raising it later should be a reviewed change.`);
+  process.exit(0);
+}
+
 if (GATE) {
-  // Baseline lives OUTSIDE OUT: the report dir is wiped on every full run. Commit this file.
-  const baselinePath = `${OUT}.baseline.json`;
-  const baseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, 'utf8')) : null;
-  const GATES = { hardcoded: 'hardcodedHits', stale: 'staleStories', duplicates: 'duplicatePairs' };
-  const key = GATES[GATE] ?? GATE;
-  if (!(key in metrics)) {
-    console.error(`FAIL: unknown --gate '${GATE}'. Known: ${Object.keys(GATES).join(', ')}.`);
+  const key = GATE_ALIAS[GATE] ?? GATE;
+  if (!(key in GATEABLE)) {
+    console.error(`FAIL: '${GATE}' is not gateable. Gateable metrics: ${Object.keys(GATEABLE).join(', ')}. Ratios are not gateable: gating one inverts the policy the moment it improves.`);
     process.exit(2);
   }
   if (!existsSync(ROOT)) { console.error(`FAIL: --root ${resolve(ROOT)} does not exist; refusing to gate on an empty scan.`); process.exit(2); }
   if (componentFiles.length === 0) { console.error(`FAIL: no component files under ${resolve(ROOT)}; refusing to gate on an empty scan.`); process.exit(2); }
-  const now = metrics[key], was = baseline?.metrics?.[key];
-  if (now === null) { console.error(`FAIL: '${key}' is unknown for this project (nothing measurable found).`); process.exit(2); }
-  if (was === undefined) {
-    writeFileSync(baselinePath, JSON.stringify({ metrics }, null, 2));
-    console.log(`baseline written: ${key}=${now}`);
-    process.exit(0);
+  if (!existsSync(baselinePath)) {
+    console.error(`FAIL: no baseline at ${baselinePath}. Run --init-baseline once, review the numbers, and commit it. A gate must never mint its own baseline from the change it is checking.`);
+    process.exit(2);
   }
-  console.log(`${key}: ${now} (baseline ${was})`);
-  if (now > was) { console.error(`FAIL: ${key} rose by ${now - was}. Fix it, or update the baseline deliberately.`); process.exit(1); }
+  const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
+  const was = baseline?.metrics?.[key], now = metrics[key];
+  if (typeof was !== 'number') { console.error(`FAIL: baseline has no numeric '${key}'. Re-run --init-baseline.`); process.exit(2); }
+  if (typeof now !== 'number') { console.error(`FAIL: '${key}' is unknown for this scan.`); process.exit(2); }
+  console.log(`${key}: ${now} (baseline ${was}) - ${GATEABLE[key]}`);
+  if (now > was) { console.error(`FAIL: ${key} rose by ${now - was}. This is a count ceiling, not proof that no new violation was introduced - removing one and adding another elsewhere passes.`); process.exit(1); }
   process.exit(0);
 }
 
@@ -259,23 +288,30 @@ const table = (head, rows) => rows.length === 0 ? '_None found._' : `| ${head.jo
 writeFileSync(join(OUT, 'Overview.mdx'), page('Overview', `# Audit — ${new Date(findings.generatedAt).toDateString()}
 
 ${table(['Metric', 'Value'], [
-  ['Token adoption', metrics.tokenAdoption === null ? 'unknown' : `${metrics.tokenAdoption}%`],
-  ['Story coverage', metrics.storyCoverage === null ? 'unknown (no component exports detected)' : `${metrics.storyCoverage}%`],
-  ['Duplicate pairs', metrics.duplicatePairs],
-  ['Stale stories', metrics.staleStories],
+  ['Literal value matches', `${metrics.literalValueMatches} in ${metrics.filesWithLiteralValues} files`],
+  ['Components with a story', metrics.storiedComponentRatio === null ? 'unknown - no component exports parsed' : `${metrics.storiedComponentRatio}% of ${metrics.componentsScanned} parsed`],
+  ['Candidate duplicate pairs', metrics.candidateDuplicatePairs],
+  ['Stories older than component (mtime)', metrics.storiesOlderThanComponent],
   ['Hardcoded value hits', metrics.hardcodedHits],
 ])}
 
-${componentFiles.length} components, ${storyFiles.length} story files under \`${ROOT}\`.
+${componentFiles.length} component files, ${storyFiles.length} story files under \`${ROOT}\`.
+
+**These are discovery signals, not a quality verdict.** Literal matches are scanned from
+source text, so a component importing a stylesheet full of raw values is not counted.
+Duplicate pairs are name and prop-name similarity, not behaviour. Story counts cover only
+files this scanner can parse a component export from. File age is mtime, which is checkout
+time on a fresh clone. Nothing here tests focus behaviour, keyboard operation, translated
+content, or whether a published example matches the installed package.
 Regenerate: \`node scripts/audit.mjs --root ${ROOT}\`.`));
 
-writeFileSync(join(OUT, 'HardcodedValues.mdx'), page('Hardcoded values', `# Hardcoded values\n\nEach hit is a token that does not exist yet. Worst offenders first.\n\n${table(['File', 'Hits', 'Samples'], hardcoded.slice(0, 40).map((h) => [h.file, h.count, h.samples.join(' ')]))}`));
+writeFileSync(join(OUT, 'HardcodedValues.mdx'), page('Hardcoded values', `# Literal values in source\n\nCandidates for review. A literal may already have a suitable token, be an implementation constant, be asset geometry, or warrant a documented exception - minting a token per hit just centralises the scatter.\n\n${table(['File', 'Hits', 'Samples'], hardcoded.slice(0, 40).map((h) => [h.file, h.count, h.samples.join(' ')]))}`));
 
 writeFileSync(join(OUT, 'Duplicates.mdx'), page('Duplicates', `# Duplicate components\n\nSimilar name, overlapping prop shape. Consolidation candidates — confirm before merging.\n\n${table(['A', 'B', 'Why', 'Prop overlap', 'Shared'], duplicates.map((d) => [d.a, d.b, d.reason, d.propOverlap, d.sharedProps.slice(0, 6).join(', ')]))}`));
 
 writeFileSync(join(OUT, 'Coverage.mdx'), page('Coverage', `# Components without a story\n\nSorted by import count: the top of this list is shared vocabulary that is undocumented.\n\n${table(['Component', 'Used in', 'File'], uncovered.slice(0, 40).map((u) => [u.component, u.usedIn, u.file]))}`));
 
-writeFileSync(join(OUT, 'Stale.mdx'), page('Stale', `# Stale stories\n\nComponent changed after its story. This is decay, measured.\n\n${table(['Story', 'Reason', 'Days behind'], stale.map((s) => [s.story, s.reason, s.daysBehind ?? '—']))}`));
+writeFileSync(join(OUT, 'Stale.mdx'), page('Stale', `# Stories older than their component (mtime)\n\nA hint for prioritising review - **not** evidence of decay. A behaviour-preserving refactor lands here; a freshly edited story that is wrong does not.\n\n${table(['Story', 'Reason', 'Days behind'], stale.map((s) => [s.story, s.reason, s.daysBehind ?? '—']))}`));
 
 writeFileSync(join(OUT, 'NamingDrift.mdx'), page('Naming drift', `# Naming drift\n\nCompeting vocabularies for one concept. **No winner is picked here** — that is a team decision.\n\n${table(['Competing names'], drift.map((d) => [d.competing.join(' / ')]))}`));
 

@@ -1,98 +1,76 @@
 ---
 name: storybook-architect
-description: Maintains a Storybook as a design system of record — measures decay with a re-runnable audit script, renders findings as disposable Storybook pages, enforces token/status/inclusion decisions as CI gates instead of prose, and exposes the whole system to AI agents through Storybook's official manifests and MCP server. Use when the user wants a Storybook audit or health check, describes messy/inconsistent/undocumented components, asks how to organize design tokens, asks whether something should get a story, wants component status or deprecation rules, wants to stop a component library from rotting, or wants agents to stop hallucinating component props — even if they never say "Storybook".
+description: Maintenance helper for a Storybook-based component library. Surveys a codebase for review candidates (literal values, likely duplicate components, components without stories), proposes token and lifecycle conventions that fit the project's existing ones, and exposes the system to AI agents through Storybook's official manifests and MCP server. Its scans are discovery signals for humans to judge, not quality verdicts. Use when the user wants a Storybook health check, describes messy or undocumented components, asks how to organize design tokens, asks whether something should get a story, wants component status or deprecation conventions, or wants agents to stop hallucinating component props — even if they never say "Storybook".
 ---
 
 # Storybook Architect
 
-Scope: **maintenance of the system of record.** Not visual design, not Figma, not picking brand colors. This skill keeps a component library from rotting, and makes its rules answerable from the system rather than from one senior dev's memory.
+Scope: **maintenance of a component library's documentation and conventions.** Not visual design, not Figma, not brand decisions.
 
-Operating principle, and the reason this skill is script-first:
+## What this skill can and cannot tell you
 
-> Validation loops are the most common technique across surveyed design systems — 31 of 165 techniques, present in 21 of 21 systems. "A validation loop is a check the agent is told to run: a lint rule, a type error, an audit script, a CI gate. It turns a guideline into a failure the model has to fix, which is the only category here that keeps working after the model stops reading the instructions."
-> — *State of AI in Design Systems*, July 2026 · https://state-of-ai-in-design-systems.netlify.app/questions/validation-loops.md
+It reads source text. It can find literal colour values, components with no story file, names and prop shapes that look alike, and file timestamps.
 
-So: **every rule in this skill must end as a script, a tag, or a CI gate.** A rule that exists only as prose in this file has already failed. If you find yourself writing guidance a human must remember, stop and write the check instead.
+It cannot tell you whether a dialog restores focus when dismissed, whether a layout survives translated content, whether a published example matches the installed package, or whether a deprecated component has a workable migration. **Those are the obligations a design system actually owes its consumers.** Everything this skill measures is a proxy that may or may not correlate with them.
+
+So the order of work is:
+
+1. **Name the consumer obligation** — what must be true for someone to use this component safely.
+2. **Identify what evidence would show it holds.**
+3. **Decide which of that evidence can be checked reliably.**
+4. **Automate only that**, and report the rest as signals with their limitations attached.
+
+Skipping to step 4 — picking an observable proxy, assuming it represents quality, and enforcing it — produces gates that fail the right changes for the wrong reasons. Automate verifiable invariants. Report uncertain signals with evidence and confidence. Record judgment with rationale and an owner.
+
+Validation loops are worth building where the invariant is real: they are the most common technique across surveyed systems (31 of 165 techniques, in 21 of 21), because a check "keeps working after the model stops reading the instructions" ([source](https://state-of-ai-in-design-systems.netlify.app/questions/validation-loops.md)). That is an argument for automating what can be checked — not for converting every guideline into an exit code.
 
 ## Step 0 — Detect before you generate
 
-Run this first, always. Never emit story or config code before you know these four things.
-
 ```bash
-node scripts/detect.mjs          # prints version, framework pkg, renderer, config paths
+node <skill-dir>/scripts/detect.mjs <project-dir>
 ```
 
-It reports: Storybook major version, the correct framework import path, whether `.storybook/` exists, and whether the manifests/MCP features are available. **Storybook API names moved across majors** — `@storybook/react` → `@storybook/react-vite`, `@storybook/test` → `storybook/test`. Emitting an import you did not verify is the fastest way to lose the team's trust in everything else you say.
-
-Then route:
+Reports Storybook major version, framework package, config paths, installed addons. **Storybook API names moved across majors** (`@storybook/react` → `@storybook/react-vite`, `@storybook/test` → `storybook/test`), so never emit an import you have not verified. Treat its output as *declared* facts from package.json — confirm against the actual config before relying on it.
 
 | State | Go to |
 |---|---|
-| Components exist, never measured | Phase 1 |
-| Storybook exists but is stale/distrusted | Phase 1, scoped to decay |
-| Greenfield | Phase 2, skip the audit (nothing to measure yet) |
-| Rules agreed, just write/fix a story | Phase 2 § Writing stories |
-| "Should X get a story?" / "which addon?" / day-2 call | Phase 3 |
-| Agents hallucinate props / reinvent components | Phase 3 § Agent-readable |
+| Components exist, never surveyed | Phase 1 |
+| Storybook exists but is distrusted | Phase 1, scoped to what people distrust |
+| Greenfield | Phase 2 |
+| Conventions agreed, just write a story | Phase 2 § Writing stories |
+| "Should X get a story?" / day-2 call | Phase 3 |
+| Agents hallucinate props | Phase 3 § Agent-readable |
 
 ---
 
-## Phase 1 — Measure
-
-The audit is a script, not a reading of the codebase. Same input must give the same output next month, or you cannot show decay.
+## Phase 1 — Survey
 
 ```bash
-node scripts/audit.mjs --root src --out .storybook-audit
+node <skill-dir>/scripts/audit.mjs --root src --out ../audit-report
 ```
 
-It writes `findings.json` (machine-readable, four metrics + per-finding detail) and one MDX page per finding category under `.storybook-audit/`. It detects:
+`--out` must sit outside `--root`: the report directory is deleted and rewritten on every run. It writes `findings.json` plus one MDX page per category.
 
-1. **Hardcoded values** — raw hex, rgb/hsl literals, and px outside a tokens/theme file. Each hit is a token that doesn't exist yet.
-2. **Duplicate components** — clustered by normalized name and prop-shape overlap. Two `Button`-ish components sharing 60% of props (the implemented threshold) is a finding, not a coincidence.
-3. **Story coverage** — component files with no story, and which are highest-traffic (import count) among them.
-4. **Stale stories** — story file older than the component it documents. This is decay, measured.
-5. **Naming drift** — the same concept under different names (`primary` / `brand` / `accent`). Report it; **never silently pick a winner** — that's a decision for the team, and picking one quietly is how a system loses consent.
+What it reports, and what each is worth:
 
-### Make the mess visible without becoming the mess
+| Signal | Method | Trust it for |
+|---|---|---|
+| Literal value matches | regex over source text | finding review candidates; **not** a token-compliance number |
+| Components without stories | files this scanner can parse a component export from | a gap list; the denominator excludes Vue/Svelte SFCs and anything it cannot parse |
+| Candidate duplicate pairs | name similarity + shared prop *names* | starting an investigation; it compares neither types nor behaviour |
+| Stories older than component | file mtime | prioritising review; mtime is checkout time on a fresh clone |
 
-Findings render as Storybook pages so people click through them instead of ignoring a report. Three rules keep audit output from turning into the next generation of rot:
+A literal value is **not** automatically a missing token. It may already have a token, be an implementation constant, be asset geometry, or deserve a documented exception. Minting a token per hit converts scattered constants into a centralised collection of scattered constants.
 
-- **Generated only.** Everything under `.storybook-audit/` is written by the script and regenerated from scratch each run. Never hand-edit it. A fixed finding disappears on the next run with no cleanup ritual.
-- **Tagged and quarantined.** Every audit page carries `tags={['audit', '!manifest']}`. `manifest` is applied to all stories and docs pages by default; `!manifest` removes it, keeping audit findings out of the agent-facing manifest so agents never learn from the anti-patterns you're documenting (Storybook's own best practice: remove the `manifest` tag from stories demonstrating anti-patterns or deprecated components).
-- **Hidden by default.** In `.storybook/main.ts`:
+Similarly, competing vocabulary (`primary` / `brand` / `accent`) is an observation, not a proven conflict — those can name different axes: action priority, identity, emphasis. Report what you found; establish scope and role before proposing consolidation, and never pick a winner silently.
 
-```ts
-tags: {
-  audit: { defaultFilterSelection: 'exclude' },
-}
-```
+### Keeping the report from becoming the mess
 
-The tag becomes a sidebar filter that is off until someone asks for it. Findings are one click away, not in everyone's face forever.
+- **Generated only.** Regenerated from scratch each run, so a resolved finding disappears with no cleanup ritual. Never hand-edit.
+- **Quarantined.** Pages carry `tags={['audit', '!manifest', '!autodocs']}`. `manifest` is applied by default; `!manifest` removes the page from the agent-facing manifest, per [Storybook's guidance](https://storybook.js.org/docs/ai/best-practices) on excluding anti-pattern and deprecated examples from retrieval.
+- **Hidden by default** via `tags: { audit: { defaultFilterSelection: 'exclude' } }` in `main.ts`.
 
-Point `stories` at the audit directory only when you want it built:
-
-```ts
-stories: ['../src/**/*.stories.@(ts|tsx|js|jsx|mdx)', '../.storybook-audit/**/*.mdx'],
-```
-
-Keep `.storybook-audit/` out of the production build and out of git (`.gitignore`) unless the team wants the trend committed.
-
-### Report the four numbers
-
-End every audit with the metrics block from `findings.json`, not prose:
-
-| Metric | This run |
-|---|---|
-| Token adoption (styled values via tokens) | `x%` |
-| Story coverage (components with a story) | `x%` |
-| Duplicate pairs | `n` |
-| Stale stories | `n` |
-
-Commit `findings.json` to a known path so the next run can print the delta. **Without a baseline, "we stopped the decay" is unfalsifiable.** See `references/metrics.md` for targets and for wiring the gate.
-
-On a large codebase, sample the highest-traffic shared component directories first and say plainly it is a sample.
-
-Then stop. The audit's job is visibility. Do not start rewriting components unless asked.
+Report the numbers with their method attached, then stop. The survey's job is visibility, not permission to rewrite components.
 
 ---
 
@@ -100,138 +78,107 @@ Then stop. The audit's job is visibility. Do not start rewriting components unle
 
 ### Tokens
 
-Read `references/token-architecture.md` before proposing any token scheme. Two things override everything in it:
+Read `references/token-architecture.md`. Two things override everything in it:
 
-1. **Conform to the project's existing convention if one exists.** A Tailwind project's `text-md` is correct in that project. Overwriting a working local grammar with a famous external one is vandalism with a citation.
-2. **Three layers by default: Primitive → Semantic → Component**, and a component never references a Primitive directly. Add component-scoped tokens only when a real override case appears — see the reference for why a per-component layer is a bloat vector, and why interaction state belongs in the token *name* rather than in a fourth layer.
+1. **Conform to the project's existing convention.** A Tailwind project's `text-md` is correct in that project.
+2. **Semantic aliasing is required where meaning changes with theme or mode** — colour roles above all. It is not automatically required for every spacing, radius or duration value; Atlassian itself documents direct scale consumption (`token('space.200')`). Specify which categories need semantic naming and why.
 
 ### Writing stories
 
-Non-negotiable, because each one is a measured decay cause:
-
-1. **One concept per story.** Storybook's own AI guidance: a `SizesAndVariants` story "demonstrates too many concepts at once, making it less clear and less useful as a reference for agents." Split it.
-2. **Document the *why*.** JSDoc on the component and its props, plus a description on each story explaining why you'd use what it shows. This text is what lands in the manifest that agents read — undocumented props are what agents hallucinate around.
-3. **Two kinds of story, marked as such.** This distinction prevents most rot:
-   - **Workshop** (`tags: ['!autodocs', '!manifest']`) — a build harness for a component still in motion. Cheap, disposable, nobody's contract.
-   - **Contract** (`tags: ['autodocs']`) — the documented API. Maintained, status-tagged, covered by tests.
-   Collapsing the two is why teams end up maintaining throwaway stories and distrusting the whole tool.
-4. **Isolate at the boundary, don't restructure the product.** Stories depending on a router, a store, or a fetch are the classic break. Mock the module — do not force an app-architecture refactor to satisfy a documentation tool:
+1. **One concept per story.** Storybook's AI guidance: a `SizesAndVariants` story "demonstrates too many concepts at once."
+2. **Document the *why*** in JSDoc on the component and its props, and in each story's description. This text lands in the manifest agents read.
+3. **Maturity, audience and test inclusion are separate decisions.** A harness story can become a valuable regression fixture; an experimental component can have a well-documented contract with limited support. Tag them independently rather than sorting every story into one of two buckets. Note that `!autodocs`/`!manifest` do **not** remove Storybook's implicit `test` tag — decide test inclusion explicitly.
+4. **Isolate at the boundary; don't restructure the product** to satisfy a documentation tool:
 
 ```ts
-// .storybook/preview.ts  — module mocks register at project level only
+// .storybook/preview.ts — module mocks register at project level only
 import { sb } from 'storybook/test';
 sb.mock(import('../src/lib/session.ts'));
-sb.mock(import('uuid'), { spy: true });
 ```
 
-```ts
-// Component.stories.ts
-const meta = {
-  component: AuthButton,
-  beforeEach: async () => {
-    mocked(getUserFromSession).mockReturnValue({ name: 'John Doe' });
-  },
-} satisfies Meta<typeof AuthButton>;
-```
-
-Extract a pure presenter when the component is genuinely doing two jobs — as a design call, not as a tax the tool imposes.
-
-5. **CSF3, with the import path from Step 0.** Do not paste `@storybook/react` from memory.
+5. **Composition stories earn their place.** A field, button and dialog can each be correct in isolation while their composition fails on long content, focus order, error recovery or layering. [Storybook supports pages with controlled dependencies](https://storybook.js.org/docs/writing-stories/build-pages-with-storybook), and representative content is how you test that the parts work together. Give them controlled providers and fixtures; put them in a separate area or Storybook if ownership differs. Depth-3 taxonomy is a default worth keeping until discovery suffers, not a rule.
+6. **CSF3, with the import path from Step 0.**
 
 ```ts
 import type { Meta, StoryObj } from '@storybook/your-framework'; // ← from detect.mjs
-import { Button } from './Button';
-
-const meta = {
-  title: 'Components/Inputs/Button',
-  component: Button,
-  tags: ['autodocs', 'ready'],
-  argTypes: { variant: { control: 'select', options: ['primary', 'secondary'] } },
-} satisfies Meta<typeof Button>;
-
+const meta = { component: Button, tags: ['autodocs', 'ready'] } satisfies Meta<typeof Button>;
 export default meta;
-type Story = StoryObj<typeof meta>;
-
 /** Default call-to-action. Use for the single primary action on a surface. */
-export const Default: Story = { args: { variant: 'primary', children: 'Action' } };
+export const Default: StoryObj<typeof meta> = { args: { variant: 'primary', children: 'Action' } };
 ```
-
-6. **Taxonomy `[Category]/[Group]/[Component]`, depth 3.** Group by what a consumer searches for. Do not ship a `Pages` layer of whole-screen stories — those are exactly the context-coupled stories rule 4 exists to contain.
 
 ---
 
-## Phase 3 — Enforce
+## Phase 3 — Enforce what is actually checkable
 
-The rules only count once they can fail a build.
+### Status conventions
 
-### Status is an enum, not a vibe
+Status lives as a Storybook tag; taxonomy and transitions in `references/component-lifecycle.md`.
 
-Status lives as a Storybook tag. `references/component-lifecycle.md` has the taxonomy and transition rules.
+`scripts/validate-status.mjs` **lints** those tags and must not gate CI as written. Storybook resolves tags per story across project → meta → story with `!tag` removing an inherited tag; the script flattens a file instead, so it misreads the documented `['!ready','experimental']` override, treats a workshop meta as a contract, and rejects legitimate custom tags. Transition checking is unimplemented. Real enforcement needs resolved per-story metadata from Storybook's index, not a file regex.
 
-`scripts/validate-status.mjs` **lints** those tags — it does not yet enforce them, and must not be wired into CI as written. Storybook resolves tags per story across project → meta → story with `!tag` removing an inherited tag; the script flattens a whole file instead, so it misreports the documented `['!ready','experimental']` override, treats a workshop meta as a contract, and rejects legitimate custom tags. Transition checking is unimplemented. Run it for signal; read the findings yourself. Enforcement needs resolved per-story metadata from Storybook's index, not a file-level regex.
+### Gates
 
-```ts
-// .storybook/main.ts — status tags become sidebar filters
-tags: {
-  deprecated:   { defaultFilterSelection: 'exclude' },
-  experimental: { defaultFilterSelection: 'exclude' },
-  wip:          { defaultFilterSelection: 'exclude' },
-  audit:        { defaultFilterSelection: 'exclude' },
-},
+Only two signals are gateable, and only as count ceilings that must not rise:
+
+```bash
+node <skill-dir>/scripts/audit.mjs --root src --out ../audit-report --init-baseline   # once, reviewed, committed
+node <skill-dir>/scripts/audit.mjs --root src --out ../audit-report --gate literalValueMatches
 ```
 
-Now "what's deprecated and what replaces it" is a sidebar filter and a CI check, not tribal knowledge.
+A count ceiling is **not** "no new violations": removing one violation and adding another elsewhere passes. If you need that guarantee, compare stable violation identities, or use a real lint rule — `stylelint-declaration-strict-value`, an ESLint rule, or a typed token vocabulary the compiler checks. Prefer those; they beat this scanner on every axis. Ratios are deliberately not gateable — gating one inverts the policy the moment it improves.
 
-### Inclusion is computed, not argued
+Do **not** gate on story age. mtime is checkout time on a fresh clone, a behaviour-preserving refactor lands in the list, and a freshly edited story can still be wrong.
 
-"Used in 2+ places" is a fact the audit already counts. Don't debate it — read it off `findings.json` and put the number in the story description. The judgment left for a human is narrow: is this shared vocabulary, or one screen's furniture? Rules in `references/component-lifecycle.md`.
+### Accessibility
 
-### Gates that stop decay at the source
+`@storybook/addon-a11y` with `parameters.a11y.test: 'error'` on documented components, `'todo'` while bringing one up, `'off'` only with a written reason. Automated axe checks are useful evidence and **not** a completeness claim: focus management, keyboard operation, content extremes, forced colors and reduced motion need deliberate verification. Blanket `'error'` everywhere produces noise on token swatches, the team disables it globally, and you end up with less accessibility than a scoped rule would have given.
 
-An audit finds rot; a gate prevents it. Wire these in CI (details and sample workflow in `references/metrics.md`):
+### Agent-readable
 
-- **No new raw values.** `node scripts/audit.mjs --gate hardcoded` fails when hardcoded hex/px in component directories exceeds the committed baseline. Surveyed systems overwhelmingly enforce tokens by making the raw value *fail* — 15 token-enforcement techniques across 13 systems, "mostly by making the raw value fail rather than by asking the model not to write it" (https://state-of-ai-in-design-systems.netlify.app/questions/design-tokens.md). Prefer a real lint rule (`stylelint-declaration-strict-value`, an ESLint no-restricted-syntax rule, or a typed token vocabulary the compiler checks) over the script when the stack supports one.
-- **Status validity.** Not available yet — `validate-status.mjs` lints, but cannot resolve tag inheritance. Do not gate on it.
-- **Accessibility, scaled deliberately.** `@storybook/addon-a11y` with `parameters.a11y.test: 'error'` on contract stories; `'todo'` while a component is being brought up. `'off'` only with a written reason. Blanket `'error'` everywhere produces noise on token swatches and layout pages, the team disables it globally, and you end up with less a11y than a scoped rule would have given you.
-- **Tests, scoped to logic.** `@storybook/addon-vitest` turns stories into browser-run component tests. Play functions once a component has real logic — validation, toggles, multi-step state — not on presentational ones. Pass `storybookUrl` so CI failures link to the published Storybook.
-
-### Agent-readable — same artifacts, no parallel format
-
-Humans and agents read the **same** stories. Do not hand-roll `llms-*.txt` when Storybook generates manifests natively.
+Humans and agents read the same stories. Do not hand-roll `llms-*.txt` when Storybook generates manifests natively:
 
 ```ts
 // .storybook/main.ts
 features: { componentsManifest: true },
+typescript: { reactDocgen: 'react-docgen-typescript' },
 ```
 
 ```bash
 npx storybook add @storybook/addon-mcp
-npx mcp-add --type http --url "http://localhost:6006/mcp" --scope project
 ```
 
-Manifests are served at `/manifests/components.json` and `/manifests/docs.json` (debugger at `/manifests/components.html`). React prop extraction is more complete with `reactDocgen: 'react-docgen-typescript'`. Then add the pointer to `AGENTS.md`/`CLAUDE.md` — without it agents keep guessing out of habit. Full setup, the static fallback for published docs, and the instruction text: `references/agent-readable-docs.md`.
+Manifests: `/manifests/components.json`, `/manifests/docs.json`. Then **verify end to end** — build or start Storybook, fetch the manifest, find a known component, confirm a real prop and its description are present, and confirm intended exclusions are absent. Config snippets do not prove the contract reached the agent. Details in `references/agent-readable-docs.md`.
 
 ### Ownership
 
-A gate without an owner gets disabled the first time it's inconvenient. Record in the repo: who reviews a new shared component, how a contribution enters, and the deprecation window length. One short section in `AGENTS.md` beats a wiki nobody opens.
+Different contributions need different review: a typo fix, a token adjustment, a new shared data grid and a breaking API change are not one workflow ([Curtis on contribution models](https://eightshapes.com/articles/defining-contributions/)). Define at minimum: accountable owner, release authority, acceptance evidence, exception process, migration responsibility, consumer support path. Link them where contributors actually work — `AGENTS.md` serves agents, not necessarily designers.
 
 ---
 
 ## Reference files
 
-Read only what the current phase needs.
-
-- `references/token-architecture.md` — layers, real Atlassian grammar with source, migration order, a11y tokens
-- `references/component-lifecycle.md` — status enum, transitions, inclusion rules, addon thresholds
-- `references/metrics.md` — the four numbers, targets, CI wiring
-- `references/agent-readable-docs.md` — manifests, MCP, static fallback, agent instruction text
-- `references/elite-patterns.md` — sourced patterns, each with a URL and date verified
+- `references/token-architecture.md` — layers, Atlassian grammar with source, migration order, a11y tokens
+- `references/component-lifecycle.md` — status taxonomy, inclusion vs promotion, addon thresholds
+- `references/metrics.md` — what each signal measures, gate wiring, limitations
+- `references/agent-readable-docs.md` — manifests, MCP, verification, static fallback
+- `references/elite-patterns.md` — sourced patterns with URLs and verification dates
 
 ## Scripts
 
 - `scripts/detect.mjs` — version/framework/paths. Run before emitting code.
-- `scripts/audit.mjs` — the four metrics + finding MDX. Re-runnable, gate mode.
-- `scripts/validate-status.mjs` — status enum and deprecation-pointer CI check.
-- `scripts/test-scripts.mjs` — fixture check for both. Run it after editing either script.
+- `scripts/audit.mjs` — survey signals; `--init-baseline` / `--gate` for count ceilings.
+- `scripts/validate-status.mjs` — status lint. Not CI-ready; see its header.
+- `scripts/test-scripts.mjs` — fixture checks. Run after editing either script.
 
-Verified against Storybook 10.6 documentation, September 2026. Re-verify with `detect.mjs` before trusting any API name here.
+## Known limitations
+
+Carry these into any report produced from this skill:
+
+- Scanning is regex over source text, not AST or computed styles. A project with its own AST-based tooling (TypeScript compiler API, Style Dictionary, a token pipeline) should use that instead — it will be strictly better.
+- Metrics are unvalidated proxies. No false-positive/false-negative rate has been measured against a curated sample.
+- `validate-status.mjs` does not implement Storybook's tag semantics.
+- The full path — detection → stories → generated docs → manifest contents → deliberate failures — has not been verified end to end on a supported project.
+- Nothing here checks release/version alignment: a Storybook build can be perfectly current with an unreleased branch and still mislead someone about last month's package.
+
+Verified against Storybook 10.6 documentation, September 2026. Re-verify with `detect.mjs`.

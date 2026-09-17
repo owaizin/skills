@@ -36,11 +36,12 @@ Source: https://storybook.js.org/docs/writing-stories/tags and https://storybook
 | `ready` | Stable API. Safe to build on. |
 | `deprecated` | Do not use in new work. Must name its replacement. |
 
-`node scripts/validate-status.mjs` fails the build on: an unknown status string (catches `redy`), more than one status on a story, a contract story with no status, and a `deprecated` story with no "use X instead" pointer. Wire it into CI — the enum only means something once a typo breaks a build.
+`node scripts/validate-status.mjs` **lints** these tags. **Do not wire it into CI.** It flattens every tag array in a file rather than resolving Storybook's per-story inheritance (project → meta → story, `!tag` removing an inherited tag), so it misreports the `['!ready','experimental']` override shown above, treats a workshop meta as a contract, and rejects legitimate custom tags. Its deprecation check is a prose regex that accepts "use caution". Read its findings; do not treat them as verdicts. Enforcement needs resolved per-story metadata from Storybook's index.
 
 **Transitions**
 - `experimental → ready` only once the API has stopped changing **and** it's used in a real production surface, not just in Storybook.
-- `ready → deprecated` ships with the replacement pointer in the same commit. A deprecation with no pointer is a warning nobody can act on — which is why it's a hard CI failure here, not a convention.
+- `ready → deprecated` ships with migration guidance in the same commit. Usually that is "use X instead". Sometimes there is legitimately no successor — a capability being retired — and then the guidance is the retirement rationale and what consumers should do instead. Do not force a fictional replacement to satisfy a checker.
+- A lifecycle needs an end: track retirement and consumer-upgrade completion, not an eternally `deprecated` entry.
 - No jumping straight to `deprecated` without a `ready` period, unless the component was broken or unsafe from the start.
 - Deprecated components also get `!manifest`, so agents stop suggesting them: Storybook's own guidance is to remove the `manifest` tag from stories demonstrating anti-patterns or deprecated components.
 
@@ -48,29 +49,28 @@ Source: https://storybook.js.org/docs/writing-stories/tags and https://storybook
 
 Collapsing these is the most common source of story rot — teams end up maintaining throwaway harnesses as if they were contracts, then stop trusting the whole tool.
 
-| | Workshop | Contract |
+Rather than two buckets, decide each axis explicitly:
+
+| Axis | Options | Notes |
 |---|---|---|
-| Purpose | Build harness while the component moves | The documented API |
-| Tags | `['!autodocs', '!manifest', 'wip']` | `['autodocs', 'ready']` |
-| Maintained? | No. Delete freely. | Yes. Status-tagged, tested. |
-| In agent manifest? | No | Yes |
+| Maturity | `wip` / `experimental` / `ready` / `deprecated` | one per story, after inheritance |
+| Docs | `autodocs` or not | generated docs cost nothing to keep current |
+| Agent retrieval | `manifest` or `!manifest` | exclude anti-patterns; deprecated APIs may still need to be findable by migration agents |
+| Tests | Storybook's `test` tag is implicit | `!autodocs`/`!manifest` do **not** remove it — a harness story still runs in CI unless you say otherwise |
 
-A churning component **should** get a workshop story — that's where duplicates get prevented. What it should not get is an autodocs contract nobody can honor yet.
+A harness story often becomes a valuable regression fixture; don't delete it merely because it started as scaffolding. An experimental component can carry a well-documented contract with limited support. Define promotion and retirement criteria rather than inferring them from tags.
 
-## Does this component belong in Storybook?
+## Three separate questions
 
-Most of this is computed, not argued. `findings.json` already carries `usedIn` per component.
+Conflating these is why libraries end up both over- and under-documented:
 
-**Contract story if:**
-- Used in 2+ places (read the number; don't debate it), **or**
-- It has states worth previewing — loading, error, empty, disabled, **or**
-- Other developers or designers will reference it without opening the source.
+1. **Does this need a reproducible scenario?** Driven by failure risk and the number of states worth exercising — not by reuse. A one-off screen with complex error recovery may need one badly; a widely reused component with one visual state may not.
+2. **Does this need consumer documentation?** Driven by how many people build against it and whether they can read the source. A layout primitive every product depends on needs docs precisely *because* everything depends on it — "no real props" is not "no contract": responsive behaviour, spacing, width and nesting rules are all consumer commitments.
+3. **Does this deserve shared-library ownership?** Driven by product demand, semantic stability, accessibility maturity and the team's capacity to maintain it. This is a promotion decision with an owner, not a computed one.
 
-**Not yet if:**
-- One-off composition for a single screen.
-- A layout wrapper with no real props (`<Container>` that is `max-width` plus padding).
+Reuse evidence informs all three and settles none. Treat the scanner's `usedIn` count as a weak hint: it includes stories and tests, merges unrelated same-name imports, counts repeated imports from one file separately, and misses consumers outside the scanned root.
 
-When genuinely unsure, default to **workshop, not contract**. An honest gap beats a stale contract.
+When genuinely unsure whether something is ready to be documented as a contract, say so in the story rather than shipping an implied guarantee.
 
 ## Docs level
 
@@ -84,8 +84,8 @@ When genuinely unsure, default to **workshop, not contract**. An honest gap beat
   Source: https://storybook.js.org/docs/writing-tests/accessibility-testing
 - **`@storybook/addon-vitest`** — turns stories into real-browser component tests (smoke render + any play function) via portable stories. Requires Vite; `@storybook/test-runner` remains supported and works with any framework. Pass `storybookUrl` so CI failures link to the published Storybook.
   Source: https://storybook.js.org/docs/writing-tests/integrations/vitest-addon
-- **Play functions** — once a component has real logic: validation, toggles, multi-step state, conditional rendering. Not on presentational components; that's maintenance with no bug-catching value.
-- **Visual regression (Chromatic/Percy)** — when manual review of every PR's visual diff stops being realistic. Unnecessary at 5 components, overdue well before 50.
+- **Play functions** — follow observable obligations and failure risk, not a "has state" rule. A stateless component can still owe an accessible name, native keyboard behaviour, a disabled state, or event forwarding, and those are worth asserting. Skip tests that merely mirror the implementation.
+- **Visual regression (Chromatic/Percy)** — when risk and maintenance economics justify it, independent of catalog size: five heavily reused primitives can warrant it immediately. Decide who approves an intentional visual change and how flaky evidence is handled before turning it on.
 
 ## Context-coupled stories
 
@@ -104,4 +104,4 @@ Extract a pure presenter when the component is honestly doing two jobs. That's a
 
 ## Ownership
 
-Record in `AGENTS.md`, in three lines: who reviews a new shared component, how a contribution enters, and how long the deprecation window is. Gates without an owner get disabled the first time they're inconvenient.
+Contribution types need different paths: a typo fix, a token adjustment, a new shared data grid and a breaking API change are not one workflow ([Curtis](https://eightshapes.com/articles/defining-contributions/)). Define, at a scale that fits the team: accountable owner, release authority, acceptance evidence, exception process, migration responsibility, consumer support path. Put them where contributors actually look — `AGENTS.md` addresses agents, and is not automatically the right interface for designers or product teams. Gates without an owner get disabled the first time they're inconvenient.

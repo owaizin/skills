@@ -37,7 +37,7 @@ Same source as above. What makes it work is not the segment count — it's that 
 
 ## Migration order (retrofitting)
 
-1. **Spacing and color first.** Highest blast radius, clearest signal — `audit.mjs` already grepped them for you and ranked files by hit count. Start at the top of that list.
+1. **Colour first**, then spacing. Highest blast radius and, for colour, the clearest theming justification. The scanner ranks files by literal-match count; treat that ranking as a worklist of candidates, each of which still needs a decision: existing token, new token, implementation constant, or documented exception.
 2. **Typography next**, once spacing/color conventions have survived contact with real PRs.
 3. **Component tokens last**, and only per the rule above.
 

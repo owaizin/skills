@@ -50,14 +50,24 @@ assert.ok(f.stale.some((s) => s.story.endsWith('Button.stories.tsx')), 'componen
 assert.ok(f.uncovered.some((u) => u.component === 'Card' && u.usedIn === 2), 'uncovered sorted by real import count');
 assert.ok(f.uncovered.some((u) => u.component === 'DatePicker'), 'kebab-case file with PascalCase export counts as an uncovered component');
 assert.ok(f.uncovered.find((u) => u.component === 'DatePicker').usedIn >= 1, 'kebab-case imports are counted');
-assert.ok(f.metrics.storyCoverage < 100 && f.metrics.tokenAdoption < 100, 'metrics reflect the mess');
+assert.ok(f.metrics.storiedComponentRatio < 100, 'ratio reflects missing stories');
+assert.ok(f.metrics.literalValueMatches > 0 && f.metrics.filesWithLiteralValues > 0, 'literal counts are raw counts, not a percentage');
+assert.ok(!('tokenAdoption' in f.metrics), 'no metric claims to measure token adoption');
 assert.ok(readFileSync(join(tmp, '.audit/Overview.mdx'), 'utf8').includes("tags={['audit', '!manifest', '!autodocs']}"), 'audit pages are quarantined');
 
 // gate: first run writes a baseline outside the wiped report dir, second run passes
-run('audit.mjs', ['--out', join(tmp, '.audit'), '--gate', 'hardcoded']);
-run('audit.mjs', ['--out', join(tmp, '.audit')]); // full run wipes .audit
+// A gate with no baseline must FAIL, never mint one from the change under test.
+let noBaseline = false;
+try { run('audit.mjs', ['--out', join(tmp, '.audit'), '--gate', 'hardcoded']); } catch { noBaseline = true; }
+assert.ok(noBaseline, 'gate without a baseline exits non-zero');
+run('audit.mjs', ['--out', join(tmp, '.audit'), '--init-baseline']);
+run('audit.mjs', ['--out', join(tmp, '.audit')]); // full run wipes the report dir
 const pass = run('audit.mjs', ['--out', join(tmp, '.audit'), '--gate', 'hardcoded']);
 assert.ok(pass.includes('baseline'), 'baseline survives a full audit run');
+// Ratios must be refused as gates: gating one inverts the policy when it improves.
+let ratioRefused = false;
+try { run('audit.mjs', ['--out', join(tmp, '.audit'), '--gate', 'storiedComponentRatio']); } catch { ratioRefused = true; }
+assert.ok(ratioRefused, 'ratio metrics are not gateable');
 
 // gate fails when the number rises
 w('src/Worse.tsx', `const s = { color: '#abcdef', color2: '#123456', pad: '32px' };`);
@@ -66,7 +76,8 @@ try { run('audit.mjs', ['--out', join(tmp, '.audit'), '--gate', 'hardcoded']); }
 assert.ok(failed, 'gate exits non-zero when hardcoded values increase');
 
 // status validator
-assert.ok(run('validate-status.mjs').includes('ok'), 'valid status passes');
+assert.ok(run('validate-status.mjs').includes('not a statement that statuses are correct'),
+  'a clean lint run does not claim statuses are correct');
 w('src/Bad.stories.tsx', `const meta = { component: Bad, tags: ['autodocs', 'redy'] };`);
 let statusFailed = false;
 try { runGate('validate-status.mjs'); } catch (e) { statusFailed = true; assert.ok(String(e.stderr).includes("unknown tag 'redy'")); }

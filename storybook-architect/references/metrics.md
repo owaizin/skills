@@ -1,17 +1,17 @@
-# Metrics & Gates
+# Signals, Baselines & Gates
 
-"We cleaned up the component library" is unfalsifiable. Four numbers, tracked over time, are not.
+These are **discovery signals**, not quality measures. Each is a proxy scanned from source text; none establishes that a component meets its consumer contract. Report them with their method attached, and never as a grade.
 
-## The four numbers
+## The signals
 
 `scripts/audit.mjs` emits all of them into `findings.json` on every run.
 
-| Metric | Definition | Read it as |
+| Signal | What it literally counts | What it does NOT establish |
 |---|---|---|
-| **Token adoption** | % of component files with no raw hex/rgb/px outside token files | Is the semantic layer actually used, or just documented? |
-| **Story coverage** | % of components with a story | How much of the system is visible |
-| **Duplicate clusters** | Pairs with similar names and ≥60% prop overlap | Consolidation debt |
-| **Stale stories** | Stories older than the component they document | Decay, directly measured |
+| `literalValueMatches` / `filesWithLiteralValues` | regex hits for hex/rgb/hsl/px in scanned source | token compliance — a component importing a stylesheet of raw values counts clean |
+| `storiedComponentRatio` (+ `componentsScanned`) | parsed component exports that have a matching story | documentation quality; the denominator excludes anything the regex cannot parse (Vue/Svelte SFCs → `null`) |
+| `candidateDuplicatePairs` | pairs sharing a name or ≥60% prop *names* | duplication — it compares neither types nor behaviour, and N similar components produce N(N−1)/2 pairs |
+| `storiesOlderThanComponent` | file mtime comparison | decay — mtime is checkout time on a fresh clone, and a behaviour-preserving refactor lands here |
 
 Coverage is the weakest of the four on its own — 100% coverage of stale stories is worse than 60% of fresh ones. Read coverage and staleness together, always.
 
@@ -20,7 +20,9 @@ Coverage is the weakest of the four on its own — 100% coverage of stale storie
 There is no industry number to hit, and any skill that hands you one is inventing it. Set the target from your own baseline:
 
 - **First run = the baseline.** Commit it. `.storybook-audit.baseline.json` lives outside the report directory precisely because the report is wiped each run.
-- **Ratchet, don't leap — and mind the direction.** Two metrics are violation counts that must not rise (hardcoded hits, duplicate pairs). Two are percentages that must not fall (token adoption, story coverage). A single "nothing may increase" rule is wrong: it would forbid coverage improving. Only the violation-count metrics have a `--gate`.
+- **Only violation counts are gateable**, and only upward: `literalValueMatches`, `candidateDuplicatePairs`. Ratios are rejected by the script — gating one inverts the policy the moment it improves.
+- **Baselines are explicit.** `--init-baseline` is a separate, reviewable command. `--gate` with no baseline fails; a gate must never mint its own baseline from the change it is checking.
+- **A count ceiling is not "no new violations."** Removing one and adding another elsewhere passes. For that guarantee, compare stable violation identities, or use a real lint rule instead.
 - **Re-baseline deliberately.** Raising a baseline is a commit someone reviews, with a reason in the message. Silent baseline drift is the failure mode to watch for — if baselines move every sprint, the gate is theatre.
 - Only after the ratchet holds for a quarter is it worth naming an absolute target (say, token adoption ≥90% in `components/`).
 
@@ -43,11 +45,13 @@ jobs:
         with: { node-version: 22 }
       - run: npm ci
 
-      # status enum, one status per story, deprecations name a replacement
-      - run: node scripts/validate-status.mjs --root src
+      # NOTE: validate-status.mjs is NOT in this workflow. It does not resolve
+      # Storybook's tag inheritance and reports false findings. Run it by hand.
 
-      # no new raw values (prefer a lint rule where the stack supports one)
-      - run: node scripts/audit.mjs --root src --gate hardcoded
+      # count ceiling on literal values. Prefer a real lint rule where the stack
+      # supports one: stylelint-declaration-strict-value, an ESLint rule, or a typed
+      # token vocabulary the compiler checks. All three beat this scanner.
+      - run: node scripts/audit.mjs --root src --out ../audit-report --gate literalValueMatches
 
       # NOTE: no `--gate stale`. Staleness is mtime-based; a fresh clone or a
       # repo-wide reformat manufactures it, and a behaviour-preserving refactor

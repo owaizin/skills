@@ -68,7 +68,10 @@ for (const file of walk(ROOT)) {
 console.log(JSON.stringify({ statusCounts: counts, findings: errors.length }, null, 2));
 if (errors.length) {
   console.error('\n' + errors.join('\n'));
-  console.error('\nThese are LINT FINDINGS, not verdicts: tag inheritance is not resolved (see header).');
+  console.error(`\n${errors.length} finding(s) need HUMAN review. This script does not resolve Storybook's`);
+  console.error('tag inheritance (project -> meta -> story, ! removes an inherited tag), so some of the');
+  console.error('above are certainly false. Read each one; do not treat this output as a verdict.');
   if (args.includes('--gate')) process.exit(1);
+  process.exit(0);
 }
-console.log('status: ok');
+console.log('No findings from the checks this script can perform. That is not a statement that statuses are correct.');
