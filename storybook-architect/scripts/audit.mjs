@@ -37,7 +37,7 @@ const src = new Map(files.map((f) => [f, readFileSync(f, 'utf8')]));
 
 // --- 1. hardcoded values -----------------------------------------------------
 // Raw values outside a token/theme file. 0/1px borders and 0px are noise, not findings.
-const HEX = /#[0-9a-fA-F]{3,8}\b/g;
+const HEX = /(?<![&\w])#[0-9a-fA-F]{3,8}\b/g;  // (?<!&) so HTML entities like &#9650; are not colors
 const FUNC_COLOR = /\b(?:rgba?|hsla?)\(\s*\d/g;
 const PX = /(?<![\w-])(\d{2,4})px\b/g;
 const hardcoded = [];
@@ -54,17 +54,59 @@ for (const f of [...componentFiles, ...files.filter((f) => /\.(css|scss|less)$/.
 hardcoded.sort((a, b) => b.count - a.count);
 
 // --- 2. story coverage + import traffic -------------------------------------
+// Key on EXPORTED component names, never on filename case. shadcn-convention repos
+// name the file `button.tsx` and export `Button`; a PascalCase filename filter skips
+// the entire library while reporting high coverage.
 const nameOf = (f) => basename(f, extname(f));
-const storiedNames = new Set(storyFiles.map((f) => basename(f).split('.stories')[0]));
+const key = (n) => n.toLowerCase().replace(/[-_]/g, '');
+
+const exportsOf = (text) => {
+  const set = new Set();
+  for (const m of text.matchAll(/export\s+(?:default\s+)?(?:function|const|class)\s+([A-Z]\w*)/g)) set.add(m[1]);
+  for (const m of text.matchAll(/export\s*\{([^}]*)\}/g)) {
+    for (const p of m[1].split(',')) {
+      const n = p.trim().split(/\s+as\s+/).pop().trim();
+      if (/^[A-Z]\w*$/.test(n)) set.add(n);
+    }
+  }
+  return set;
+};
+
+// A component file exports at least one capitalized binding.
+const componentOf = new Map();
+for (const f of componentFiles) {
+  const names = exportsOf(src.get(f) ?? '');
+  if (names.size) componentOf.set(f, [...names][0]);
+}
+
+// Storied if a story file matches the filename OR a `component:` reference.
+const storiedKeys = new Set(storyFiles.map((f) => key(basename(f).split('.stories')[0])));
+for (const s of storyFiles) {
+  for (const m of (src.get(s) ?? '').matchAll(/component:\s*([A-Z]\w*)/g)) storiedKeys.add(key(m[1]));
+}
+
+// Import traffic by module basename and by named import, both case-insensitive.
 const importCount = new Map();
 for (const [, text] of src) {
-  for (const m of text.matchAll(/from\s+['"][^'"]*\/?([A-Z][\w-]*)['"]/g)) {
-    importCount.set(m[1], (importCount.get(m[1]) ?? 0) + 1);
+  // One import statement counts once per distinct key, even when the module basename
+  // and the named binding normalize to the same thing (`import { Card } from './Card'`).
+  for (const m of text.matchAll(/import\s+(?:\{([^}]*)\}|[\w*\s,]+?)\s*from\s*['"][^'"]*?([\w-]+)['"]/g)) {
+    const keys = new Set([key(m[2])]);
+    for (const p of (m[1] ?? '').split(',')) {
+      const n = p.trim().split(/\s+as\s+/)[0].trim();
+      if (/^[A-Z]\w*$/.test(n)) keys.add(key(n));
+    }
+    for (const k of keys) importCount.set(k, (importCount.get(k) ?? 0) + 1);
   }
 }
-const uncovered = componentFiles
-  .filter((f) => /^[A-Z]/.test(nameOf(f)) && !storiedNames.has(nameOf(f)))
-  .map((f) => ({ file: relative(ROOT, f), component: nameOf(f), usedIn: importCount.get(nameOf(f)) ?? 0 }))
+
+const uncovered = [...componentOf.entries()]
+  .filter(([f, name]) => !storiedKeys.has(key(nameOf(f))) && !storiedKeys.has(key(name)))
+  .map(([f, name]) => ({
+    file: relative(ROOT, f),
+    component: name,
+    usedIn: Math.max(importCount.get(key(name)) ?? 0, importCount.get(key(nameOf(f))) ?? 0),
+  }))
   .sort((a, b) => b.usedIn - a.usedIn);
 
 // --- 3. duplicate clusters ---------------------------------------------------
@@ -80,10 +122,9 @@ const propsOf = (text) => {
   }
   return set;
 };
-const norm = (n) => n.toLowerCase().replace(/(base|new|old|v\d+|legacy|custom|shared|common)/g, '');
-const shapes = componentFiles
-  .filter((f) => /^[A-Z]/.test(nameOf(f)))
-  .map((f) => ({ file: relative(ROOT, f), name: nameOf(f), key: norm(nameOf(f)), props: propsOf(src.get(f) ?? '') }));
+const norm = (n) => key(n).replace(/(base|new|old|v\d+|legacy|custom|shared|common)/g, '');
+const shapes = [...componentOf.entries()]
+  .map(([f, name]) => ({ file: relative(ROOT, f), name, key: norm(name), props: propsOf(src.get(f) ?? '') }));
 
 const overlap = (a, b) => {
   if (a.size === 0 || b.size === 0) return 0;
@@ -92,13 +133,31 @@ const overlap = (a, b) => {
   return shared / Math.min(a.size, b.size);
 };
 const duplicates = [];
+// Two files exporting the SAME component name are a duplicate regardless of prop
+// overlap: parallel `components/button.tsx` + `shadcn/button.tsx` trees are the
+// canonical case this audit exists to surface, and they often share no prop types.
+const byName = new Map();
+for (const s of shapes) byName.set(s.name, [...(byName.get(s.name) ?? []), s]);
+for (const [name, group] of byName) {
+  if (group.length < 2) continue;
+  for (let i = 0; i < group.length; i++) {
+    for (let j = i + 1; j < group.length; j++) {
+      duplicates.push({
+        a: group[i].file, b: group[j].file, reason: 'same exported name',
+        propOverlap: Number(overlap(group[i].props, group[j].props).toFixed(2)),
+        sharedProps: [...group[i].props].filter((p) => group[j].props.has(p)),
+      });
+    }
+  }
+}
+const seen = new Set(duplicates.map((d) => `${d.a}|${d.b}`));
 for (let i = 0; i < shapes.length; i++) {
   for (let j = i + 1; j < shapes.length; j++) {
     const a = shapes[i], b = shapes[j];
     const sameish = a.key === b.key || a.key.includes(b.key) || b.key.includes(a.key);
     const ov = overlap(a.props, b.props);
-    if (sameish && ov >= 0.6) {
-      duplicates.push({ a: a.file, b: b.file, propOverlap: Number(ov.toFixed(2)), sharedProps: [...a.props].filter((p) => b.props.has(p)) });
+    if (sameish && ov >= 0.6 && !seen.has(`${a.file}|${b.file}`)) {
+      duplicates.push({ a: a.file, b: b.file, reason: 'similar name + prop shape', propOverlap: Number(ov.toFixed(2)), sharedProps: [...a.props].filter((p) => b.props.has(p)) });
     }
   }
 }
@@ -107,7 +166,7 @@ for (let i = 0; i < shapes.length; i++) {
 const stale = [];
 for (const s of storyFiles) {
   const base = basename(s).split('.stories')[0];
-  const comp = componentFiles.find((c) => nameOf(c) === base);
+  const comp = componentFiles.find((c) => key(nameOf(c)) === key(base));
   if (!comp) { stale.push({ story: relative(ROOT, s), reason: 'no matching component file' }); continue; }
   const sM = statSync(s).mtimeMs, cM = statSync(comp).mtimeMs;
   if (cM > sM) {
@@ -127,7 +186,8 @@ const drift = SYNONYMS.map((group) => {
 const pct = (n, d) => (d === 0 ? 100 : Math.round((n / d) * 100));
 const metrics = {
   tokenAdoption: pct(componentFiles.length - hardcoded.filter((h) => COMPONENT_EXT.has(extname(h.file))).length, componentFiles.length),
-  storyCoverage: pct(componentFiles.length - uncovered.length, componentFiles.length),
+  // Denominator is component files that actually export a component, not every .tsx.
+  storyCoverage: pct(componentOf.size - uncovered.length, componentOf.size),
   duplicateClusters: duplicates.length,
   staleStories: stale.length,
   hardcodedHits: hardcoded.reduce((s, h) => s + h.count, 0),
@@ -183,7 +243,7 @@ Regenerate: \`node scripts/audit.mjs --root ${ROOT}\`.`));
 
 writeFileSync(join(OUT, 'HardcodedValues.mdx'), page('Hardcoded values', `# Hardcoded values\n\nEach hit is a token that does not exist yet. Worst offenders first.\n\n${table(['File', 'Hits', 'Samples'], hardcoded.slice(0, 40).map((h) => [h.file, h.count, h.samples.join(' ')]))}`));
 
-writeFileSync(join(OUT, 'Duplicates.mdx'), page('Duplicates', `# Duplicate components\n\nSimilar name, overlapping prop shape. Consolidation candidates — confirm before merging.\n\n${table(['A', 'B', 'Prop overlap', 'Shared'], duplicates.map((d) => [d.a, d.b, d.propOverlap, d.sharedProps.slice(0, 6).join(', ')]))}`));
+writeFileSync(join(OUT, 'Duplicates.mdx'), page('Duplicates', `# Duplicate components\n\nSimilar name, overlapping prop shape. Consolidation candidates — confirm before merging.\n\n${table(['A', 'B', 'Why', 'Prop overlap', 'Shared'], duplicates.map((d) => [d.a, d.b, d.reason, d.propOverlap, d.sharedProps.slice(0, 6).join(', ')]))}`));
 
 writeFileSync(join(OUT, 'Coverage.mdx'), page('Coverage', `# Components without a story\n\nSorted by import count: the top of this list is shared vocabulary that is undocumented.\n\n${table(['Component', 'Used in', 'File'], uncovered.slice(0, 40).map((u) => [u.component, u.usedIn, u.file]))}`));
 

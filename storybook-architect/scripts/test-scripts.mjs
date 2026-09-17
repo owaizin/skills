@@ -22,6 +22,12 @@ w('src/legacy/ButtonLegacy.tsx', `interface ButtonLegacyProps { variant: string;
 export function ButtonLegacy(p: ButtonLegacyProps) { return null; }`);
 w('src/Button.stories.tsx', `const meta = { component: Button, tags: ['autodocs', 'ready'] };`);
 w('src/uses/App.tsx', `import { Card } from '../Card';\nimport { Card } from '../Card';`);
+// shadcn convention: kebab-case filename, PascalCase export, no story.
+// Regression guard: a filename-case filter skips this and inflates coverage.
+w('src/components/date-picker.tsx', `interface DatePickerProps { value: string; onChange: () => void; }
+const DatePicker = (p: DatePickerProps) => null;
+export { DatePicker };`);
+w('src/uses/Page.tsx', `import { DatePicker } from '../components/date-picker';`);
 
 // make the story older than its component -> stale
 const old = new Date('2020-01-01');
@@ -33,13 +39,15 @@ const run = (script, extra = []) =>
 const out = run('audit.mjs', ['--out', join(tmp, '.audit')]);
 const f = JSON.parse(readFileSync(join(tmp, '.audit/findings.json'), 'utf8'));
 
-assert.equal(f.counts.components, 4, 'counts .tsx components (Card, Button, ButtonLegacy, App), excludes stories and .ts token file');
+assert.equal(f.counts.components, 6, 'counts .tsx components (Card, Button, ButtonLegacy, App, date-picker, Page), excludes stories and .ts token file');
 assert.ok(f.hardcoded.some((h) => h.file.endsWith('Card.tsx')), 'flags hex + px in a component');
 assert.ok(!f.hardcoded.some((h) => h.file.includes('tokens/')), 'token files are exempt');
 assert.equal(f.duplicates.length, 1, 'Button vs ButtonLegacy is one duplicate cluster');
 assert.ok(f.duplicates[0].propOverlap >= 0.6);
 assert.ok(f.stale.some((s) => s.story.endsWith('Button.stories.tsx')), 'component newer than story is stale');
 assert.ok(f.uncovered.some((u) => u.component === 'Card' && u.usedIn === 2), 'uncovered sorted by real import count');
+assert.ok(f.uncovered.some((u) => u.component === 'DatePicker'), 'kebab-case file with PascalCase export counts as an uncovered component');
+assert.ok(f.uncovered.find((u) => u.component === 'DatePicker').usedIn >= 1, 'kebab-case imports are counted');
 assert.ok(f.metrics.storyCoverage < 100 && f.metrics.tokenAdoption < 100, 'metrics reflect the mess');
 assert.ok(readFileSync(join(tmp, '.audit/Overview.mdx'), 'utf8').includes("tags={['audit', '!manifest', '!autodocs']}"), 'audit pages are quarantined');
 
