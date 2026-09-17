@@ -19,10 +19,16 @@ const ROOT = arg('root', 'src');
 const OUT = arg('out', '.storybook-audit');
 const GATE = arg('gate', null);
 const INIT = args.includes('--init-baseline');
+// Repo-local by default so it can be committed and reviewed. The report dir is wiped
+// each run, so the baseline must not live inside it.
+const BASELINE = arg('baseline', '.storybook-audit-baseline.json');
 
 const COMPONENT_EXT = new Set(['.tsx', '.jsx', '.vue', '.svelte']);
 const SKIP_DIR = /(^|\/)(node_modules|dist|build|coverage|\.git|storybook-static)(\/|$)/;
-const TOKEN_FILE = /(tokens?|theme|palette|design-system\/(foundations|primitives))/i;
+// Match token/theme files by PATH SEGMENT, not substring: the old pattern excluded
+// `cmdk/command-palette.tsx` (real component, 6 literal px values) because its name
+// contains "palette". Verified against a real repo.
+const TOKEN_FILE = /(^|\/)(tokens?|theme|themes|palette|palettes|foundations|primitives)(\/|\.[jt]sx?$|\.css$)/i;
 const STORY = /\.stories\.(t|j)sx?$|\.stories\.mdx$/;
 
 const walk = (dir, acc = []) => {
@@ -47,7 +53,7 @@ const src = new Map(files.map((f) => [f, readFileSync(f, 'utf8')]));
 // Raw values outside a token/theme file. 0/1px borders and 0px are noise, not findings.
 const HEX = /(?<![&\w])#[0-9a-fA-F]{3,8}\b/g;  // (?<!&) so HTML entities like &#9650; are not colors
 const FUNC_COLOR = /\b(?:rgba?|hsla?)\(\s*\d/g;
-const PX = /(?<![\w-])(\d{2,4})px\b/g;
+const PX = /(?<![\w-])(\d{1,4})px\b/g;  // 1 digit included: [2px]/[3px] are real values
 const hardcoded = [];
 for (const f of [...componentFiles, ...files.filter((f) => /\.(css|scss|less)$/.test(f))]) {
   if (TOKEN_FILE.test(f)) continue;
@@ -55,7 +61,7 @@ for (const f of [...componentFiles, ...files.filter((f) => /\.(css|scss|less)$/.
   const hits = [
     ...(text.match(HEX) ?? []),
     ...(text.match(FUNC_COLOR) ?? []),
-    ...(text.match(PX) ?? []).filter((m) => Number(m.replace('px', '')) > 1),
+    ...(text.match(PX) ?? []).filter((m) => Number(m.replace('px', '')) > 1),  // 0/1px hairlines stay noise
   ];
   if (hits.length) hardcoded.push({ file: relative(ROOT, f), count: hits.length, samples: [...new Set(hits)].slice(0, 8) });
 }
@@ -82,10 +88,14 @@ const exportsOf = (text) => {
 
 // A component file exports at least one capitalized binding.
 const componentOf = new Map();
+const exportedNames = new Map();
 for (const f of componentFiles) {
   const names = exportsOf(src.get(f) ?? '');
-  if (names.size) componentOf.set(f, [...names][0]);
+  if (names.size) { componentOf.set(f, [...names][0]); exportedNames.set(f, [...names]); }
 }
+// A file exporting Card, CardHeader, CardTitle... is ONE entry above. Report the
+// real export count separately so the inventory is not silently undercounted.
+const exportedComponentCount = [...exportedNames.values()].reduce((n, a) => n + a.length, 0);
 
 // Storied if a story file matches the filename OR a `component:` reference.
 const storiedKeys = new Set(storyFiles.map((f) => key(basename(f).split('.stories')[0])));
@@ -202,7 +212,8 @@ const metrics = {
   filesWithLiteralValues: hardcoded.length,
   // Denominator: files this scanner could parse a component export from. Frameworks
   // it cannot parse (Vue/Svelte SFCs) yield null, never a perfect score.
-  componentsScanned: componentOf.size,
+  componentsScanned: componentOf.size,  // files with a parsed component export
+  exportedComponentCount,  // individual exported components (compound files export several)
   componentsWithoutStories: uncovered.length,
   storiedComponentRatio: pct(componentOf.size - uncovered.length, componentOf.size),
   candidateDuplicatePairs: duplicates.length,  // pairs needing review, not confirmed duplicates
@@ -220,7 +231,7 @@ const GATEABLE = {
   candidateDuplicatePairs: 'component pairs flagged for duplicate review',
 };
 const GATE_ALIAS = { hardcoded: 'literalValueMatches', duplicates: 'candidateDuplicatePairs' };
-const baselinePath = `${OUT}.baseline.json`;
+const baselinePath = BASELINE;
 
 if (INIT) {
   if (!existsSync(ROOT)) { console.error(`FAIL: --root ${resolve(ROOT)} does not exist.`); process.exit(2); }
@@ -292,7 +303,6 @@ ${table(['Metric', 'Value'], [
   ['Components with a story', metrics.storiedComponentRatio === null ? 'unknown - no component exports parsed' : `${metrics.storiedComponentRatio}% of ${metrics.componentsScanned} parsed`],
   ['Candidate duplicate pairs', metrics.candidateDuplicatePairs],
   ['Stories older than component (mtime)', metrics.storiesOlderThanComponent],
-  ['Hardcoded value hits', metrics.hardcodedHits],
 ])}
 
 ${componentFiles.length} component files, ${storyFiles.length} story files under \`${ROOT}\`.

@@ -33,8 +33,11 @@ w('src/uses/Page.tsx', `import { DatePicker } from '../components/date-picker';`
 const old = new Date('2020-01-01');
 utimesSync(join(tmp, 'src/Button.stories.tsx'), old, old);
 
+// --baseline is explicit in every call: the default is cwd-relative, and tests must
+// never write a baseline into the skill directory they are run from.
 const run = (script, extra = []) =>
-  execFileSync('node', [join(here, script), '--root', join(tmp, 'src'), ...extra], { encoding: 'utf8' });
+  execFileSync('node', [join(here, script), '--root', join(tmp, 'src'),
+    ...(script === 'audit.mjs' ? ['--baseline', join(tmp, 'baseline.json')] : []), ...extra], { encoding: 'utf8' });
 // validate-status only exits non-zero under --gate now that it is a lint, not a verdict.
 const runGate = (script, extra = []) => run(script, ['--gate', ...extra]);
 

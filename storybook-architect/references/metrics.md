@@ -19,12 +19,14 @@ Coverage is the weakest of the four on its own — 100% coverage of stale storie
 
 There is no industry number to hit, and any skill that hands you one is inventing it. Set the target from your own baseline:
 
-- **First run = the baseline.** Commit it. `.storybook-audit.baseline.json` lives outside the report directory precisely because the report is wiped each run.
+- **Initialise the baseline explicitly**, review the numbers, and commit it:
+  `node <skill>/scripts/audit.mjs --root src --out .storybook-audit --baseline .storybook-audit-baseline.json --init-baseline`
+  The baseline defaults to `.storybook-audit-baseline.json` in the working directory — repo-local, so it can be committed. Keep the report directory (`--out`) inside the repo but outside `--root`; it is wiped on every run, so the baseline must not live in it.
 - **Only violation counts are gateable**, and only upward: `literalValueMatches`, `candidateDuplicatePairs`. Ratios are rejected by the script — gating one inverts the policy the moment it improves.
 - **Baselines are explicit.** `--init-baseline` is a separate, reviewable command. `--gate` with no baseline fails; a gate must never mint its own baseline from the change it is checking.
 - **A count ceiling is not "no new violations."** Removing one and adding another elsewhere passes. For that guarantee, compare stable violation identities, or use a real lint rule instead.
 - **Re-baseline deliberately.** Raising a baseline is a commit someone reviews, with a reason in the message. Silent baseline drift is the failure mode to watch for — if baselines move every sprint, the gate is theatre.
-- Only after the ratchet holds for a quarter is it worth naming an absolute target (say, token adoption ≥90% in `components/`).
+- Absolute targets need a metric that measures the thing being targeted. None of the signals here qualify: a literal-match count is not a token-compliance rate. If you want a compliance target, get it from a lint rule or a typed token vocabulary that can actually observe styled declarations.
 
 ## Trend, not snapshot
 
@@ -68,7 +70,7 @@ Add gates one at a time. Three gates introduced in one PR get disabled in one PR
 Across 21 surveyed design systems, validation loops are the most common technique — 31 of 165, present in every system studied — because a loop "turns a guideline into a failure the model has to fix, which is the only category here that keeps working after the model stops reading the instructions."
 Source: https://state-of-ai-in-design-systems.netlify.app/questions/validation-loops.md (July 2026 snapshot)
 
-That applies equally to humans. Every rule in this skill that isn't a gate is a rule with a decay half-life.
+That is an argument for automating the invariants that can be checked reliably. It is not an argument for converting every guideline into an exit code: a gate built on an invalid proxy fails the right changes for the wrong reasons, and contributors learn to route around it.
 
 ## What the audit does not measure
 
@@ -78,6 +80,6 @@ Say this out loud when reporting, so the numbers aren't over-trusted:
 - **Import counting misses dynamic imports, barrel-file re-exports, and non-PascalCase components.**
 - **Staleness uses file mtime**, which is checkout time on a fresh clone — not authoring history. It is a review-prioritisation hint, never a gate.
 - **"Duplicate pairs" counts pairs, not clusters.** Four similar components produce six pairs.
-- **Token adoption counts files without literal matches**, not styled declarations or semantic-token usage. A component importing a CSS file full of raw hex still scores as clean. Treat it as a discovery signal, not a compliance number.
+- **Literal matching scans source text**, not styled declarations or computed styles. A component importing a stylesheet full of raw hex is not itself counted. The counts are review candidates, never a compliance number.
 - **A null metric means unknown** (nothing measurable found, or a framework whose component exports this scanner cannot parse — Vue and Svelte SFCs among them). Never read it as 100%.
 - **Nothing here measures quality.** A well-covered, fully tokenized system can still be badly designed. These four numbers measure rot, not craft.

@@ -46,10 +46,10 @@ Reports Storybook major version, framework package, config paths, installed addo
 ## Phase 1 — Survey
 
 ```bash
-node <skill-dir>/scripts/audit.mjs --root src --out ../audit-report
+node <skill-dir>/scripts/audit.mjs --root src --out .storybook-audit
 ```
 
-`--out` must sit outside `--root`: the report directory is deleted and rewritten on every run. It writes `findings.json` plus one MDX page per category.
+`--out` must sit outside `--root` — the report directory is deleted and rewritten on every run — but should stay inside the repo so it can be gitignored or built. The baseline is a separate file (`--baseline`, default `.storybook-audit-baseline.json`) precisely so it survives that wipe and can be committed. It writes `findings.json` plus one MDX page per category.
 
 What it reports, and what each is worth:
 
@@ -122,8 +122,8 @@ Status lives as a Storybook tag; taxonomy and transitions in `references/compone
 Only two signals are gateable, and only as count ceilings that must not rise:
 
 ```bash
-node <skill-dir>/scripts/audit.mjs --root src --out ../audit-report --init-baseline   # once, reviewed, committed
-node <skill-dir>/scripts/audit.mjs --root src --out ../audit-report --gate literalValueMatches
+node <skill-dir>/scripts/audit.mjs --root src --out .storybook-audit --init-baseline   # once, reviewed, committed
+node <skill-dir>/scripts/audit.mjs --root src --out .storybook-audit --gate literalValueMatches
 ```
 
 A count ceiling is **not** "no new violations": removing one violation and adding another elsewhere passes. If you need that guarantee, compare stable violation identities, or use a real lint rule — `stylelint-declaration-strict-value`, an ESLint rule, or a typed token vocabulary the compiler checks. Prefer those; they beat this scanner on every axis. Ratios are deliberately not gateable — gating one inverts the policy the moment it improves.
