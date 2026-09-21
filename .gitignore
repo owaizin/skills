@@ -2,3 +2,9 @@
 node_modules/
 .storybook-audit/
 .DS_Store
+
+# Local research, evaluation artifacts, and unrelated skill experiments
+.local/
+product-system-skills-v0.2/
+product-system-skills-v0.2.zip
+student-question-design/

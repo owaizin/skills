@@ -1,6 +1,6 @@
 # Optional source survey
 
-Use this experimental fallback only when a bounded source survey helps answer the request and the project lacks a maintained check for it. Do not run it merely because the skill was invoked. In Brilliance, use the Product System tooling instead; this scanner adds no demonstrated scanning value there.
+Use this experimental fallback only when a bounded source survey helps answer the request and the project lacks a maintained check for it. Do not run it merely because the skill was invoked. In a project with an established audit pipeline, reuse it; a second scanner needs demonstrated incremental value.
 
 Explain the purpose in ordinary language: “I'll look for a few possible documentation gaps and repeated implementations, then check the candidates against the source.” Run the commands yourself when you have access. The user should not have to interpret `findings.json`.
 

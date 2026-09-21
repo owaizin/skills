@@ -4,6 +4,8 @@
 
 If the project already has a working token convention, adopt it. A Tailwind project's `text-md` is correct *in that project*. Propose changes where consumer evidence shows the existing vocabulary cannot express a needed role or theme. A scanner finding different words is only a candidate: `primary`, `brand`, and `accent` can describe different axes without conflicting.
 
+An intentionally short-lived experiment, such as a landing-page variant or brand exploration, can reasonably use raw values or local CSS custom properties. Document its scope; intentional exceptions can remain appropriate at any maturity level. A second theme makes roles that vary by theme worth modeling, without requiring every spacing value, geometric constant, or component property to acquire an alias.
+
 ## Layers — choose by purpose
 
 1. **Primitive** (Core/Global/Base) — raw values, no meaning. `blue-500: #3B82F6`, `space-4: 16px`

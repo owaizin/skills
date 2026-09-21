@@ -57,6 +57,12 @@ Decide each axis explicitly:
 
 A harness story often becomes a valuable regression fixture; don't delete it merely because it started as scaffolding. An experimental component can carry a well-documented contract with limited support. Define promotion and retirement criteria rather than inferring them from tags.
 
+## When there are no stories yet
+
+Author a small representative batch, verify it, then expand. Inspect the consumers, providers, and context each component needs. Preserve existing stories, control dependencies at the boundary, and check meaningful behavior before scaling up. Prioritize verification by consumer risk, including interaction states and recovery; rendering alone does not establish a useful example. Organize stories around the audience and ownership model rather than a mandatory atomic → module → page hierarchy.
+
+Storybook's [agentic setup guidance](https://storybook.js.org/docs/ai/setup) describes a small initial batch and verification. That setup feature currently supports React with Vite; this general authoring approach does not require using the feature.
+
 ## Three separate questions
 
 Conflating these is why libraries end up both over- and under-documented:
@@ -71,13 +77,19 @@ When genuinely unsure whether something is ready to be documented as a contract,
 
 ## Docs level
 
+Keep consumer guidance complete for the audience that needs it. A new teammate may need basics that an experienced developer already knows, and familiar prop names can carry project-specific meaning. Give each component a short, disambiguating summary; retrieve fuller detail when the task requires it. Include essential constraints, required-input semantics, and recovery guidance in the relevant answer. Improve selection instead of cutting useful substance.
+
+Place guidance where its owners can maintain it. Component-level facts belong with the code. If editors maintain cross-cutting usage principles elsewhere, link them from component docs and make them reachable through agent retrieval.
+
 - Use `tags: ['autodocs']` when generated API reference helps consumers. Verify extraction and examples after API changes; generation does not maintain the usage advice for you.
 - Hand-written MDX only when the component needs prose stories can't express: design rationale, do/don't, when to use this versus a neighbor. If the MDX would restate autodocs, skip it.
-- Write JSDoc on the component and on each prop. It lands in the agent-facing manifest, and undocumented props are exactly what agents hallucinate around.
+- Write useful JSDoc on the component and its props, then verify what reaches the manifest. Missing semantics can lead people and agents to guess; text that repeats the type does not resolve that gap.
+
+When components are confused with one another in a review or in what an agent selects, name the alternative in each description with a concrete “choose this when” condition. Pill, tag, and badge can mean different things across teams; use the project's actual distinction. Add these pointers where confusion is observed instead of cataloging every similar pair.
 
 ## Addon thresholds
 
-- **`@storybook/addon-a11y`** — inspect the runner first. With the supported integration, `parameters.a11y.test: 'error'` makes violations fail, `'todo'` records pending work, and `'off'` disables that check. Verify an intentional failure through the actual CI command before claiming enforcement. Manual addon mode can coexist with separate Playwright axe checks; Brilliance uses that arrangement. Do not infer missing coverage from `manual: true` alone. Automated checks still need focused keyboard and focus verification.
+- **`@storybook/addon-a11y`** — inspect the runner first. With the supported integration, `parameters.a11y.test: 'error'` makes violations fail, `'todo'` records pending work, and `'off'` disables that check. Verify an intentional failure through the actual CI command before claiming enforcement. Manual addon mode can coexist with separate Playwright axe checks; the integration evaluation observed that arrangement. Do not infer missing coverage from `manual: true` alone. Automated checks still need focused keyboard and focus verification.
   Source: https://storybook.js.org/docs/writing-tests/accessibility-testing
 - **`@storybook/addon-vitest`** — turns stories into real-browser component tests (smoke render + any play function) via portable stories. Requires Vite; `@storybook/test-runner` remains supported and works with any framework. Pass `storybookUrl` so CI failures link to the published Storybook.
   Source: https://storybook.js.org/docs/writing-tests/integrations/vitest-addon

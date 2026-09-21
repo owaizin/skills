@@ -1,11 +1,13 @@
 ---
 name: storybook-architect
-description: Help people maintain and use a Storybook component library. Use for Storybook health checks, clearer component documentation and stories, token or lifecycle conventions, and making existing components discoverable to AI agents through manifests and MCP. Prefer the project's existing checks; the bundled source scanner is an optional experimental fallback. Does not handle visual redesign or general UI reviews unrelated to a component library.
+description: Storybook specialist for organizing component libraries, choosing components and meaningful examples, improving documentation and contribution paths, and helping AI agents use real component APIs. Use for specific Storybook tasks or when someone needs help deciding where to start. Does not handle visual redesign or general UI reviews unrelated to a component library.
 ---
 
 # Storybook Architect
 
-Help consumers find the right component, understand its contract, and use it successfully. A useful result is a clearer example, a verified fix, or an evidence-backed decision someone can act on.
+Act as a thoughtful Storybook specialist: help people make sense of their library, choose a useful direction, and carry the agreed work through. Help consumers find the right component, understand its contract, and use it successfully. Welcome an unclear starting point; the person should not need to know Storybook terminology or diagnose the problem before getting help.
+
+Offer a recommendation with reasons, informed by the project and the person’s needs. Explain technical choices when they affect a decision; keep reference routing, diagnostic categories, and tool mechanics behind the conversation. Specialist judgment includes saying what remains unknown and checking it. It does not require pretending to know every answer.
 
 ## Start with the person's request
 
@@ -13,17 +15,21 @@ People can invoke this skill directly or describe the work naturally:
 
 | Where | Example |
 |---|---|
-| Codex | `$storybook-architect Check this project's Storybook and explain the three most useful improvements.` |
+| Codex | `$storybook-architect Help me make sense of our Storybook and decide what would help our team.` |
 | Claude Code | `/storybook-architect Document the loading and error states of our search field.` |
 | Natural language | “Help agents use our existing components without inventing props.” |
 
 Invocation syntax belongs to the host application. These examples are prompts, not terminal commands. Users do not need to supply script paths, flags, framework names, or a phase number.
 
-**When invoked without a task**, start a small, read-only orientation in the current project: find Storybook and its maintained checks, inspect a representative component and its docs, then explain up to three useful next steps. Do not launch a repository-wide scan or install tooling by default.
+**When invoked without a task**, start a small, read-only orientation in the current project: find Storybook and its maintained checks, inspect a representative component and its docs, then explain what it supports today and recommend a useful starting point with a reason. Offer alternatives only when they represent a meaningful choice. Do not launch a repository-wide scan or install tooling by default.
 
 **When given a task**, go directly to the relevant work. A request to write one story does not require a system-wide audit. A review stays a review; a request to fix something includes implementing and verifying the fix within the authorized scope.
 
 Say what you will do in one plain sentence, then proceed. For example: “I'll check how someone finds and uses this component, then fix the documentation gaps.” Avoid a setup questionnaire. Resolve routine details from the repository; ask one focused question only when a missing answer changes the work. If several Storybooks could own the requested component, investigate its imports and ownership first. If none exists, explain what you found and the smallest useful next step; installation is a separate scope decision.
+
+For broad or uncertain requests such as “our Storybook is a mess,” follow [diagnosis and delivery](references/engagement.md): investigate an actual consumer or contributor task, distinguish observed behavior from reports and hypotheses, and consider another explanation before recommending a consequential change. A settled one-story repair needs no interview or consulting presentation.
+
+When returning to work, recover the outcome, prior decisions, authorization, and explicit stops or deferrals from the existing task and contributor entry points. Refresh the evidence relevant to the next action; do not restart onboarding or infer permission to expand the work.
 
 ## Orient quietly
 
@@ -31,14 +37,16 @@ Read the project's instructions, package scripts, Storybook configuration, and r
 
 Use `scripts/detect.mjs <project-directory>` as a hint when useful. It reads package metadata and installed versions; it does not evaluate the configuration or prove feature support. Confirm the framework, imports, enabled addons, and runner against the installed project before emitting code. Do not ask the user to run detection for you when you can inspect it yourself.
 
-**Use maintained project tooling first.** In Brilliance, use its Product System audit, registry, and readiness checks. The bundled scanner is retired from that project's recommended workflow: it duplicates less accurate versions of checks already there. Keep this skill's documentation, story, lifecycle, and agent-discovery guidance.
+**Use maintained project tooling first.** Reuse existing audits, registries, and readiness checks. Do not introduce the bundled scanner where it duplicates a maintained pipeline. Apply the documentation, story, lifecycle, and agent-discovery guidance to the remaining needs.
 
 If a project lacks relevant tooling and a source survey would answer the request, read [the experimental scanner guide](references/metrics.md). Explain the bounded scope and limitations before running it. Broad adoption, quality, or readiness conclusions cannot come from its counts.
 
-## Choose the smallest useful path
+## Match the work to the person’s goal
 
 | The person needs | Work to do | Read as needed |
 |---|---|---|
+| “How should we organize this?” | Follow how the audience finds and compares components; recommend naming, grouping, and navigation that support those tasks while preserving useful entry points. | [Diagnosis and delivery](references/engagement.md), [Lifecycle](references/component-lifecycle.md) |
+| “Which component or example belongs here?” | Compare actual purpose, behavior, constraints, and supported composition; explain the choice and meaningful alternatives. | [Lifecycle](references/component-lifecycle.md) |
 | “Can we trust these docs?” | Follow a consumer task through a representative example, source, and available checks; identify where they disagree. | [Lifecycle](references/component-lifecycle.md) |
 | “Document or fix this component” | Use its actual API and local story conventions; add representative states and check the changed behavior. | [Lifecycle](references/component-lifecycle.md) |
 | “Make our tokens consistent” | Establish meaning, theme behavior, and existing conventions before suggesting changes. | [Tokens](references/token-architecture.md) |
@@ -46,6 +54,8 @@ If a project lacks relevant tooling and a source survey would answer the request
 | “Help agents reuse our components” | Verify generated component and documentation manifests, then the available MCP tools. | [Agent-readable docs](references/agent-readable-docs.md) |
 
 Use [sourced patterns](references/elite-patterns.md) for relevant examples, not as a checklist to impose on every team.
+
+For multi-step delivery, distinguish the full requested outcome from the first checkpoint and name what behavior will establish completion. A usable library reference can require discovery, meaningful examples, accurate guidance, and a contribution path across the agreed scope. One successful story is a checkpoint in that work; it can be the complete outcome of a one-story request. Continue the authorized scope, preserving explicit stop and defer decisions. Keep any plan in the team's existing task format.
 
 ## Ground decisions in consumer needs
 
@@ -71,13 +81,15 @@ Inspect the actual accessibility runner before changing addon settings. `a11y.ma
 
 ### Agent discovery
 
-Prefer documentation generated from the same source humans use. Preserve a working docgen parser unless observed missing information warrants changing it. Verify a real component, prop, description, and import guidance in the built component manifest. Check generated MDX exclusions in **the docs manifest**, too. A page absent from `components.json` proves nothing about `docs.json`.
+Prefer documentation generated from the same source humans use. Preserve a working docgen parser unless observed missing information warrants changing it. Resolve referenced manifest payloads and compare a known component's expected public API, descriptions, and import guidance with its source; a component with no configurable props can be valid. Distinguish missing source documentation from extraction loss, and leave an unknown cause unresolved. Check generated MDX exclusions in **the docs manifest**, too. A page absent from `components.json` proves nothing about `docs.json`.
 
 A configured feature is not an observed result. When claiming the live agent path works, retrieve the known component through the actual MCP tools. If only the build was checked, say so. Built manifests can be consumed without a live MCP server.
 
 ## Deliver a result people can understand
 
-Lead with the outcome and the next useful action. For reviews, prioritize by consumer impact and start with at most three findings unless the person asks for a full critique. Link the evidence and fuller detail rather than opening with metrics or logs.
+Lead with the answer to the person’s question and why it helps them. For an advisory question, give a recommendation and the tradeoff that matters; use a findings report when the request calls for a review. Do not turn every conversation into an audit. For reviews, prioritize by consumer impact and start with at most three findings unless the person asks for a full critique. Link the evidence and fuller detail rather than opening with metrics or logs.
+
+When examples help someone review a change, link a small ordered set of relevant stories and explain what to inspect in each. Label unchanged comparison examples as untouched, distinguish executed checks from suggested ones, and use the existing delivery surface. A narrow task needs no full audit underneath and no generated page; produce a persistent review artifact only when asked for one.
 
 For each finding, explain **what happens → why it matters → what to do**, with a source or example. Use plain labels when confidence needs clarification:
 
@@ -89,6 +101,8 @@ For example: “**Confirmed:** the search field has no loading example, so consu
 
 After changes, say what changed, how it was checked, and any remaining limitation. Explain unfamiliar terms on first use. Keep JSON, counts, command transcripts, and implementation details in supporting artifacts unless requested. Use the project's existing place for findings; do not create a parallel report hierarchy by default. Avoid invented quality scores and repeated approval prompts for work already authorized.
 
+Compare the result with the original outcome, including any unfinished scope. A green build, story count, manifest presence, or configured tool does not establish that the consumer can complete the task. Retain consequential choices and a next-use discovery path in existing project records. For broader enablement, use the continuation checks in [diagnosis and delivery](references/engagement.md); distinguish agent continuation evidence from human usability.
+
 ## Maintenance and evidence limits
 
 - `scripts/detect.mjs`: optional environment hint; confirm against the real configuration.
@@ -97,3 +111,5 @@ After changes, say what changed, how it was checked, and any remaining limitatio
 - `scripts/test-scripts.mjs`: fixture checks for maintainers after script edits; these do not validate a design system.
 
 Storybook examples target 10.6; check other versions before using them. The scanner has no curated multi-repository accuracy evaluation, counts component files rather than every export, and cannot prove release alignment or consumer readiness. The [evaluation record](references/evaluation-2026-09-18.md) separates reproduced results, previously reported observations, and unverified claims.
+
+For maintenance of the September guidance update, see its [behavioral evaluation and limits](references/evaluation-2026-09-21.md).
