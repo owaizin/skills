@@ -14,7 +14,8 @@ It works inside your coding agent. It looks at your project, explains the choice
 | “How should we organize this library?” | Make naming, grouping, navigation, and documentation fit the people using it. |
 | “Which component should I use here?” | Compare purpose, behavior, constraints, and alternatives against your actual task. |
 | “What examples should this component have?” | Choose meaningful states and compositions, including loading, errors, and recovery. |
-| “Help our agents use the right components.” | Check the descriptions, APIs, examples, and import guidance agents can actually retrieve. |
+| “Can we see these components in our actual product screens?” | Build representative Storybook examples, explain what is live or simulated, and check their rendering and isolation. |
+| “Help our agents use the right components.” | Deliver a maintained component catalog and access path, then check that a consumer can discover and use a component. |
 | “How do we keep this useful?” | Clarify contribution, ownership, and maintenance practices that fit your team. |
 
 A focused request works too: “Add a story showing what happens when saving fails.”
@@ -65,6 +66,10 @@ If it does not appear, check that the folder contains `SKILL.md` directly, witho
 The skill prefers maintained project tooling. Its bundled scanner is an **optional experimental source survey** for projects without suitable checks; its counts are not quality scores. The old status classifier is retained for compatibility and is **retired from recommended use**. Project-specific guidance remains in the operating instructions.
 
 The agent's workflow is in [SKILL.md](storybook-architect/SKILL.md). References hold [lifecycle decisions](storybook-architect/references/component-lifecycle.md), [token conventions](storybook-architect/references/token-architecture.md), [manifest and MCP setup](storybook-architect/references/agent-readable-docs.md), and [experimental scanner use](storybook-architect/references/metrics.md).
+
+For AI-readable catalogs, see [registry delivery](storybook-architect/references/registry-delivery.md). It covers existing registries, native manifests, and project-specific exporters when needed. The skill does not ship a hosted registry or universal generator; this end-to-end workflow has not yet received a consumer evaluation.
+
+For product-screen representation and drift checks, see [product contexts](storybook-architect/references/product-context.md). This workflow has not yet had an end-to-end product evaluation.
 
 The scripts need Node 22+ and no additional dependencies. To verify script changes:
 

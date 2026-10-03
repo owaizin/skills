@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-03
+
+- Added [registry delivery](references/registry-delivery.md): existing-registry/native-manifest/custom-export routing, metadata coverage, reproducible generation, real access, consumer-use checks, and failure/freshness verification.
+- Clarified metadata catalogs versus installable source registries. No hosted service or universal generator is claimed. Registry acceptance scenarios remain unexecuted; structural validation does not establish end-to-end delivery.
+
+- Added an optional product-context workflow: representative screens and content, fixture provenance, product/shared ownership, version choices, interaction fidelity, styling isolation, and deliberate refresh.
+- Preserved the specialist entry experience; product capture does not become a prerequisite for other tasks. No mandatory intake ceremony, automatic issue filing, or accessibility suppression is introduced.
+- Informed by Brad Frost’s Product to Storybook; attribution and validation limits are in the [new reference](references/product-context.md).
+- Validation: skill structure, local links, diff review, and distribution consistency. No new behavioral, browser, or human-usability evaluation is claimed. Scripts are unchanged.
+
 ## 2026-09-21
 
 ### Public distribution cleanup

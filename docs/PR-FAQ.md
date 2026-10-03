@@ -105,7 +105,7 @@ Some previews and tools require a running server; other project checks do not. T
 
 People need to find the right component, understand its purpose, and see how it behaves. Agents need accurate descriptions, public APIs, examples, and import guidance. Both benefit when those answers come from maintained source and documentation.
 
-Storybook Architect helps connect those paths. For example, when a docs page looks complete but an agent still gets the props wrong, it can compare the actual agent-facing output with the component source and investigate the mismatch. That is one part of making the reference useful, alongside organization, component choice, examples, and maintenance.
+Storybook Architect helps connect those paths. For an implementation request, its registry workflow covers a maintained catalog, a usable access path, and a consumer example checked against the matching library. It reuses existing registries or Storybook manifests where sufficient and calls for a project-specific exporter only when needed. The skill does not ship a hosted registry or universal generator; this full delivery workflow has not yet been evaluated end to end. For example, when a docs page looks complete but an agent still gets the props wrong, it can compare the actual agent-facing output with the component source and investigate the mismatch. That is one part of making the reference useful, alongside organization, component choice, examples, and maintenance.
 
 ### 10. What does a good result look like?
 

@@ -1,6 +1,6 @@
 ---
 name: storybook-architect
-description: Storybook specialist for organizing component libraries, choosing components and meaningful examples, improving documentation and contribution paths, and helping AI agents use real component APIs. Use for specific Storybook tasks or when someone needs help deciding where to start. Does not handle visual redesign or general UI reviews unrelated to a component library.
+description: Storybook specialist for organizing component libraries, choosing components and meaningful examples, representing existing product screens, improving documentation and contribution paths, and delivering AI-readable component catalogs for real APIs. Use for specific Storybook tasks or when someone needs help deciding where to start. Does not handle visual redesign or general UI reviews unrelated to a component library.
 ---
 
 # Storybook Architect
@@ -47,11 +47,12 @@ If a project lacks relevant tooling and a source survey would answer the request
 |---|---|---|
 | “How should we organize this?” | Follow how the audience finds and compares components; recommend naming, grouping, and navigation that support those tasks while preserving useful entry points. | [Diagnosis and delivery](references/engagement.md), [Lifecycle](references/component-lifecycle.md) |
 | “Which component or example belongs here?” | Compare actual purpose, behavior, constraints, and supported composition; explain the choice and meaningful alternatives. | [Lifecycle](references/component-lifecycle.md) |
+| “Show our components in real product screens” | Select meaningful product contexts, preserve ownership and behavior, verify rendered examples, and report drift without overwriting intentional work. | [Product contexts](references/product-context.md) |
 | “Can we trust these docs?” | Follow a consumer task through a representative example, source, and available checks; identify where they disagree. | [Lifecycle](references/component-lifecycle.md) |
 | “Document or fix this component” | Use its actual API and local story conventions; add representative states and check the changed behavior. | [Lifecycle](references/component-lifecycle.md) |
 | “Make our tokens consistent” | Establish meaning, theme behavior, and existing conventions before suggesting changes. | [Tokens](references/token-architecture.md) |
 | “What should be shared or deprecated?” | Separate reproducible scenarios, consumer docs, and shared ownership; record the decision and migration responsibility. | [Lifecycle](references/component-lifecycle.md) |
-| “Help agents reuse our components” | Verify generated component and documentation manifests, then the available MCP tools. | [Agent-readable docs](references/agent-readable-docs.md) |
+| “Help agents reuse our components” | Deliver a maintained catalog and retrieval path; verify discovery, imports, and a real usage example. Reuse existing registries or native manifests before adding an exporter. | [Registry delivery](references/registry-delivery.md), [Agent-readable docs](references/agent-readable-docs.md) |
 
 Use [sourced patterns](references/elite-patterns.md) for relevant examples, not as a checklist to impose on every team.
 
@@ -80,6 +81,8 @@ Preserve the project's token vocabulary. Semantic aliases matter where a role ch
 Inspect the actual accessibility runner before changing addon settings. `a11y.manual: true` can coexist with separate Playwright axe tests; it is not evidence that accessibility goes untested. Verify automated failures through the runner the project uses, and check relevant keyboard, focus, and content behavior separately.
 
 ### Agent discovery
+
+For registry or AI-readability implementation requests, follow [registry delivery](references/registry-delivery.md) through generation, access, and consumer use. A metadata file alone is not the finished outcome.
 
 Prefer documentation generated from the same source humans use. Preserve a working docgen parser unless observed missing information warrants changing it. Resolve referenced manifest payloads and compare a known component's expected public API, descriptions, and import guidance with its source; a component with no configurable props can be valid. Distinguish missing source documentation from extraction loss, and leave an unknown cause unresolved. Check generated MDX exclusions in **the docs manifest**, too. A page absent from `components.json` proves nothing about `docs.json`.
 

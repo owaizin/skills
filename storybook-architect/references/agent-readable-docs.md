@@ -4,6 +4,8 @@ Keep human documentation and agent retrieval grounded in the same source. Start 
 
 Guidance below targets Storybook 10.6. Its AI APIs are in preview. Confirm installed versions and framework support; the detector's major-version flag alone is not proof of compatibility.
 
+For an end-to-end registry or AI-readability request, use [registry delivery](registry-delivery.md) to establish coverage, implement access, and verify consumer use. This reference supplies the Storybook-specific generation and connection details.
+
 ## Generate and inspect the manifests
 
 Merge the supported feature into the existing configuration:
@@ -89,4 +91,4 @@ Separately, React's reference-based manifest format requires `experimentalDocgen
 
 ## When native manifests are unavailable
 
-Use the project's existing generated API reference or component source. A separate machine-readable export is a compatibility option only when it solves a real access problem; generate it from maintained inputs and give it an owner. Split large catalogs by consumer need rather than making every query load the entire library. A published static Storybook can already contain manifests and is not, by itself, a reason to invent a parallel format.
+Use the project's existing generated API reference or component source. A separate machine-readable export is an option when native output cannot supply required metadata or solve a real access problem; generate it from maintained inputs and give it an owner. Split large catalogs by consumer need rather than making every query load the entire library. A published static Storybook can already contain manifests and is not, by itself, a reason to invent a parallel format.
